@@ -11,6 +11,8 @@ config :andnative_ai,
   ecto_repos: [AndnativeAi.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+config :andnative_ai, AndnativeAi.Repo, types: AndnativeAi.PostgrexTypes
+
 # Configures the endpoint
 config :andnative_ai, AndnativeAiWeb.Endpoint,
   url: [host: "localhost"],
