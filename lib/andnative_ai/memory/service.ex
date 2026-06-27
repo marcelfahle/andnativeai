@@ -75,35 +75,17 @@ defmodule AndnativeAi.Memory.Service do
   def delete_source(tenant_id, source_id), do: Memory.soft_delete_source(tenant_id, source_id)
 
   defp upsert_source!(tenant_id, attrs) do
-    source_type = fetch_attr!(attrs, :source_type)
-    external_source_id = fetch_attr!(attrs, :source_id)
-
-    existing =
-      Repo.get_by(Source,
-        tenant_id: tenant_id,
-        source_type: source_type,
-        source_id: external_source_id
-      )
-
     attrs =
       attrs
       |> atomize_known_keys()
       |> Map.merge(%{status: "ingesting", deleted_at: nil})
 
-    case existing do
-      nil ->
-        case Memory.create_source(tenant_id, attrs) do
-          {:ok, source} ->
-            source
-
-          {:error, changeset} ->
-            raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
-        end
-
-      %Source{} = source ->
+    case Memory.upsert_source(tenant_id, attrs) do
+      {:ok, source} ->
         source
-        |> Source.changeset(attrs)
-        |> Repo.update!()
+
+      {:error, changeset} ->
+        raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
     end
   end
 
@@ -127,10 +109,6 @@ defmodule AndnativeAi.Memory.Service do
       {_key, _value}, acc ->
         acc
     end)
-  end
-
-  defp fetch_attr!(attrs, key) do
-    Map.get(attrs, key) || Map.fetch!(attrs, Atom.to_string(key))
   end
 
   defp merge_provenance(base, chunk) do

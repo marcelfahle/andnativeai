@@ -52,6 +52,25 @@ defmodule AndnativeAi.Memory do
     |> Repo.insert()
   end
 
+  def upsert_source(tenant_id, attrs) do
+    source_type = Map.fetch!(attrs, :source_type)
+    source_id = Map.fetch!(attrs, :source_id)
+
+    case get_source_by_external_id(tenant_id, source_type, source_id) do
+      nil ->
+        create_source(tenant_id, attrs)
+
+      %Source{} = source ->
+        source
+        |> Source.changeset(attrs)
+        |> Repo.update()
+    end
+  end
+
+  def get_source_by_external_id(tenant_id, source_type, source_id) do
+    Repo.get_by(Source, tenant_id: tenant_id, source_type: source_type, source_id: source_id)
+  end
+
   def list_sources(tenant_id) do
     Repo.all(
       from source in Source,

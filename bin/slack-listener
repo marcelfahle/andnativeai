@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+mix deps.get
+mix ecto.migrate
+mix run priv/repo/seeds.exs
+
+exec mix run --no-halt

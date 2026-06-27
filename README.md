@@ -54,7 +54,9 @@ flows need these values in `.env`:
 - `SLACK_BOT_TOKEN`
 - `SLACK_APP_TOKEN`
 - `SLACK_SIGNING_SECRET`
+- `SLACK_BOT_USER_ID`
 - `OPENAI_API_KEY` or a future provider-specific LLM/embedding key
 - `OPENCLAW_GATEWAY_URL` and `OPENCLAW_WORKSPACE_PATH`
 
 Private-channel Slack scopes are intentionally deferred for the one-week proof.
+See `docs/slack-app.md` for the Socket Mode app setup.

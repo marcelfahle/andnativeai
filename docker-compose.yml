@@ -54,7 +54,7 @@ services:
 
   slack-listener:
     build: .
-    command: ./bin/service-placeholder slack-listener
+    command: ./bin/slack-listener
     env_file:
       - .env
     environment:
