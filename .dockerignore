@@ -1,0 +1,12 @@
+/_build
+/deps
+/doc
+/cover
+/tmp
+/var
+/.git
+/.env
+/priv/static/assets
+/priv/static/cache_manifest.json
+erl_crash.dump
+npm-debug.log

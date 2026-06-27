@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+mkdir -p "${RAW_SOURCES_PATH:-/app/var/sources}" "${OPENCLAW_WORKSPACE_PATH:-/app/var/openclaw}"
+
+mix deps.get
+mix ecto.create
+mix ecto.migrate
+
+exec mix phx.server

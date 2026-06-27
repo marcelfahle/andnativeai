@@ -1,0 +1,137 @@
+services:
+  control-panel:
+    build: .
+    command: ./bin/control-panel
+    env_file:
+      - .env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: andnative_ai_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      PHX_HOST: localhost
+      PORT: 4000
+      MINIO_ENDPOINT: http://minio:9000
+      REDIS_URL: redis://redis:6379/0
+      RAW_SOURCES_PATH: /app/var/sources
+      OPENCLAW_WORKSPACE_PATH: /app/var/openclaw
+    ports:
+      - "4000:4000"
+    volumes:
+      - .:/app
+      - mix_deps:/app/deps
+      - mix_build:/app/_build
+      - ./var/sources:/app/var/sources
+      - ./var/openclaw:/app/var/openclaw
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  memory-service:
+    build: .
+    command: ./bin/service-placeholder memory-service
+    env_file:
+      - .env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: andnative_ai_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      SERVICE_ROLE: memory-service
+    volumes:
+      - .:/app
+      - mix_deps:/app/deps
+      - mix_build:/app/_build
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  slack-listener:
+    build: .
+    command: ./bin/service-placeholder slack-listener
+    env_file:
+      - .env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: andnative_ai_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      SERVICE_ROLE: slack-listener
+      SLACK_SOCKET_MODE: "true"
+    volumes:
+      - .:/app
+      - mix_deps:/app/deps
+      - mix_build:/app/_build
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  openclaw-gateway:
+    build: .
+    command: ./bin/service-placeholder openclaw-gateway
+    env_file:
+      - .env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: andnative_ai_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      SERVICE_ROLE: openclaw-gateway
+      OPENCLAW_WORKSPACE_PATH: /app/var/openclaw
+    volumes:
+      - .:/app
+      - mix_deps:/app/deps
+      - mix_build:/app/_build
+      - ./var/openclaw:/app/var/openclaw
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: andnative_ai_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - ./var/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d andnative_ai_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-56379}:6379"
+    volumes:
+      - ./var/redis:/data
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: andnative
+      MINIO_ROOT_PASSWORD: andnative-secret
+    ports:
+      - "127.0.0.1:${MINIO_API_HOST_PORT:-59000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-59001}:9001"
+    volumes:
+      - ./var/minio:/data
+
+volumes:
+  mix_deps:
+  mix_build:
