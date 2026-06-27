@@ -6,5 +6,6 @@ mkdir -p "${RAW_SOURCES_PATH:-/app/var/sources}" "${OPENCLAW_WORKSPACE_PATH:-/ap
 mix deps.get
 mix ecto.create
 mix ecto.migrate
+mix run priv/repo/seeds.exs
 
 exec mix phx.server

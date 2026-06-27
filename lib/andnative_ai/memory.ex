@@ -12,6 +12,14 @@ defmodule AndnativeAi.Memory do
 
   def get_tenant_by_slug(slug), do: Repo.get_by(Tenant, slug: slug)
 
+  def ensure_demo_tenant! do
+    get_tenant_by_slug("native-ai") ||
+      case create_tenant(%{name: "&native.ai", slug: "native-ai", status: "active"}) do
+        {:ok, tenant} -> tenant
+        {:error, _changeset} -> get_tenant_by_slug("native-ai")
+      end
+  end
+
   def create_tenant(attrs) do
     %Tenant{}
     |> Tenant.changeset(attrs)

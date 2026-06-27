@@ -12,15 +12,4 @@
 
 alias AndnativeAi.Memory
 
-case Memory.get_tenant_by_slug("native-ai") do
-  nil ->
-    {:ok, _tenant} =
-      Memory.create_tenant(%{
-        name: "&native.ai",
-        slug: "native-ai",
-        status: "active"
-      })
-
-  _tenant ->
-    :ok
-end
+Memory.ensure_demo_tenant!()

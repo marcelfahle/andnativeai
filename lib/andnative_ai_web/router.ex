@@ -18,6 +18,7 @@ defmodule AndnativeAiWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    live "/admin/documents", Admin.DocumentsLive
   end
 
   # Other scopes may use custom stacks.
