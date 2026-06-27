@@ -18,7 +18,11 @@ defmodule AndnativeAiWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    live "/admin/agents", Admin.AgentsLive
+    live "/admin/sources", Admin.DocumentsLive
     live "/admin/documents", Admin.DocumentsLive
+    live "/admin/slack", Admin.SlackLive
+    live "/admin/runtime", Admin.RuntimeLive
   end
 
   scope "/api", AndnativeAiWeb do

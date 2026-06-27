@@ -10,7 +10,7 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
 
     socket =
       socket
-      |> assign(:page_title, "Document sources")
+      |> assign(:page_title, "Sources")
       |> assign(:tenant, tenant)
       |> assign(:form, to_form(%{}, as: :upload))
       |> reload_sources()
@@ -71,12 +71,13 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
   end
 
   defp reload_sources(socket) do
-    sources =
-      socket.assigns.tenant.id
-      |> DocumentIngestion.list_uploaded_sources()
-      |> Enum.filter(&(&1.source_type == "document"))
+    all_sources = DocumentIngestion.list_uploaded_sources(socket.assigns.tenant.id)
+    document_sources = Enum.filter(all_sources, &(&1.source_type == "document"))
+    slack_sources = Enum.filter(all_sources, &(&1.source_type == "slack_channel"))
 
-    assign(socket, :sources, sources)
+    socket
+    |> assign(:sources, document_sources)
+    |> assign(:slack_sources, slack_sources)
   end
 
   @impl true
@@ -89,9 +90,6 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
             <p class="text-sm font-medium text-base-content/60">{@tenant.name}</p>
             <h1 class="text-3xl font-semibold tracking-normal text-base-content">Sources</h1>
           </div>
-          <.link navigate={~p"/"} class="btn btn-ghost btn-sm">
-            <.icon name="hero-arrow-left" class="size-4" /> Home
-          </.link>
         </section>
 
         <section class="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
@@ -137,7 +135,7 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
 
           <div class="rounded-lg border border-base-300 bg-base-100">
             <div class="flex items-center justify-between border-b border-base-300 px-5 py-4">
-              <h2 class="text-base font-semibold">Uploaded sources</h2>
+              <h2 class="text-base font-semibold">Documents</h2>
               <span class="badge badge-neutral">{length(@sources)}</span>
             </div>
 
@@ -176,6 +174,42 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
                   <.icon name="hero-trash" class="size-4" />
                 </button>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-base-300 bg-base-100">
+          <div class="flex items-center justify-between border-b border-base-300 px-5 py-4">
+            <h2 class="text-base font-semibold">Slack channels</h2>
+            <span class="badge badge-neutral">{length(@slack_sources)}</span>
+          </div>
+          <div id="slack-source-list" class="divide-y divide-base-300">
+            <div
+              :if={@slack_sources == []}
+              id="slack-sources-empty"
+              class="px-5 py-10 text-sm text-base-content/60"
+            >
+              No Slack channels.
+            </div>
+            <div
+              :for={source <- @slack_sources}
+              id={"source-#{source.id}"}
+              class="flex items-center justify-between gap-4 px-5 py-4"
+            >
+              <div class="min-w-0">
+                <p class="truncate font-medium">{source.name}</p>
+                <p class="mt-1 truncate text-xs text-base-content/60">{source.source_id}</p>
+                <span class="mt-2 badge badge-outline">{source.status}</span>
+              </div>
+              <button
+                id={"delete-source-#{source.id}"}
+                class="btn btn-ghost btn-sm text-error"
+                phx-click="delete"
+                phx-value-id={source.id}
+                data-confirm="Delete this source from memory?"
+              >
+                <.icon name="hero-trash" class="size-4" />
+              </button>
             </div>
           </div>
         </section>
