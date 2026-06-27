@@ -2,6 +2,7 @@ defmodule AndnativeAi.Slack.Ingestion do
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Service
   alias AndnativeAi.Slack.Client
+  alias AndnativeAi.Slack.Distiller
 
   def handle_event(tenant_id, %{"type" => "member_joined_channel"} = event, opts) do
     bot_user_id = Keyword.get(opts, :bot_user_id)
@@ -55,10 +56,7 @@ defmodule AndnativeAi.Slack.Ingestion do
   end
 
   def ingest_messages(tenant_id, channel_id, messages, opts) do
-    chunks =
-      messages
-      |> Enum.reject(&(Map.get(&1, "text", "") == ""))
-      |> Enum.map(&message_chunk(channel_id, &1, opts))
+    chunks = Distiller.distill(channel_id, messages, opts)
 
     Service.ingest(
       tenant_id,
@@ -87,24 +85,6 @@ defmodule AndnativeAi.Slack.Ingestion do
       nil -> false
       source -> is_nil(source.deleted_at)
     end
-  end
-
-  defp message_chunk(channel_id, message, opts) do
-    ts = message["ts"] || message["event_ts"] || ""
-    client = Keyword.get(opts, :client, Client)
-    bot_token = Keyword.get(opts, :bot_token, "")
-    {:ok, permalink} = client.permalink(bot_token, channel_id, ts)
-
-    %{
-      text: message["text"],
-      channel_id: channel_id,
-      provenance: %{
-        "slack_channel" => channel_id,
-        "slack_ts" => ts,
-        "author" => message["user"],
-        "permalink" => permalink
-      }
-    }
   end
 
   defp channel_name(channel_id, opts) do
