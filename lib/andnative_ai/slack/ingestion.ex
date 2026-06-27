@@ -1,8 +1,13 @@
 defmodule AndnativeAi.Slack.Ingestion do
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Service
+  alias AndnativeAi.Runtime.Responder
   alias AndnativeAi.Slack.Client
   alias AndnativeAi.Slack.Distiller
+
+  def handle_event(tenant_id, %{"type" => "app_mention"} = event, opts) do
+    Responder.respond_to_slack(tenant_id, event, opts)
+  end
 
   def handle_event(tenant_id, %{"type" => "member_joined_channel"} = event, opts) do
     bot_user_id = Keyword.get(opts, :bot_user_id)

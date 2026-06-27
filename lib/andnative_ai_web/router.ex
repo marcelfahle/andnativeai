@@ -21,10 +21,11 @@ defmodule AndnativeAiWeb.Router do
     live "/admin/documents", Admin.DocumentsLive
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", AndnativeAiWeb do
-  #   pipe_through :api
-  # end
+  scope "/api", AndnativeAiWeb do
+    pipe_through :api
+
+    post "/memory/search", Api.MemoryController, :search
+  end
 
   # Enable LiveDashboard in development
   if Application.compile_env(:andnative_ai, :dev_routes) do

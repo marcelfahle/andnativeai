@@ -32,6 +32,14 @@ defmodule AndnativeAi.Slack.Client do
     end
   end
 
+  def post_message(bot_token, channel_id, text, thread_ts) do
+    post("/chat.postMessage", bot_token, %{
+      channel: channel_id,
+      text: text,
+      thread_ts: thread_ts
+    })
+  end
+
   def fallback_permalink(channel_id, message_ts),
     do: "slack://channel/#{channel_id}/#{message_ts}"
 
