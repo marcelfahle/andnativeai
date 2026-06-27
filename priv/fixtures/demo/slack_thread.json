@@ -1,0 +1,26 @@
+[
+  {
+    "type": "message",
+    "channel": "CDEMO",
+    "user": "UDEMO1",
+    "ts": "1710001000.000100",
+    "thread_ts": "1710001000.000100",
+    "text": "We decided to launch the pilot with OpenClaw on Monday."
+  },
+  {
+    "type": "message",
+    "channel": "CDEMO",
+    "user": "UDEMO2",
+    "ts": "1710001001.000100",
+    "thread_ts": "1710001000.000100",
+    "text": "Owner will be Ada and citations should point back to Slack."
+  },
+  {
+    "type": "message",
+    "channel": "CDEMO",
+    "user": "UDEMO3",
+    "ts": "1710001002.000100",
+    "thread_ts": "1710001000.000100",
+    "text": "thanks"
+  }
+]

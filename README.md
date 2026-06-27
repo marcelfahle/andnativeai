@@ -60,3 +60,9 @@ flows need these values in `.env`:
 
 Private-channel Slack scopes are intentionally deferred for the one-week proof.
 See `docs/slack-app.md` for the Socket Mode app setup.
+
+## Demo
+
+- `docs/demo-checklist.md` has the repeatable end-to-end script.
+- `docs/slack-smoke-test.md` has the manual Slack verification.
+- `scripts/compose-persistence-check.sh` verifies memory survives a Compose restart.

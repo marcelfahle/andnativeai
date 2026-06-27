@@ -40,6 +40,7 @@ defmodule AndnativeAi.Memory.Service do
 
   def search(tenant_id, query, scope \\ %{}) when is_binary(query) do
     limit = Map.get(scope, :limit, 5)
+    candidate_limit = max(limit * 5, 20)
     query_embedding = Embeddings.embed(query)
 
     Item
@@ -49,7 +50,7 @@ defmodule AndnativeAi.Memory.Service do
     |> where([item], not is_nil(item.embedding))
     |> apply_scope(scope)
     |> order_by([item], asc: cosine_distance(item.embedding, ^query_embedding))
-    |> limit(^limit)
+    |> limit(^candidate_limit)
     |> select([item, source], %{
       id: item.id,
       text: item.text,
@@ -70,6 +71,7 @@ defmodule AndnativeAi.Memory.Service do
       }
     })
     |> Repo.all()
+    |> rerank(query, limit)
   end
 
   def delete_source(tenant_id, source_id), do: Memory.soft_delete_source(tenant_id, source_id)
@@ -147,6 +149,24 @@ defmodule AndnativeAi.Memory.Service do
       {_key, _value}, query ->
         query
     end)
+  end
+
+  defp rerank(results, query, limit) do
+    query_terms = Embeddings.search_terms(query)
+
+    results
+    |> Enum.sort_by(fn result ->
+      {-lexical_score(query_terms, result.text), -result.score}
+    end)
+    |> Enum.take(limit)
+  end
+
+  defp lexical_score(query_terms, text) do
+    text_terms = Embeddings.search_terms(text)
+
+    query_terms
+    |> MapSet.intersection(text_terms)
+    |> MapSet.size()
   end
 
   defp utc_now do

@@ -9,7 +9,11 @@ defmodule AndnativeAi.Memory.Embeddings do
     "refund" => ~w(refund refunds reimbursement reimburse return),
     "reimbursement" => ~w(refund refunds reimbursement reimburse return),
     "source" => ~w(source citation permalink provenance reference),
-    "citation" => ~w(source citation permalink provenance reference)
+    "citation" => ~w(source citation permalink provenance reference),
+    "decision" => ~w(decision decide decided),
+    "decided" => ~w(decision decide decided),
+    "own" => ~w(owner own owns owned),
+    "owner" => ~w(owner own owns owned)
   }
 
   def dimensions, do: @dimensions
@@ -20,6 +24,13 @@ defmodule AndnativeAi.Memory.Embeddings do
     |> Enum.flat_map(&expand_token/1)
     |> vectorize()
     |> Pgvector.new()
+  end
+
+  def search_terms(text) when is_binary(text) do
+    text
+    |> tokens()
+    |> Enum.flat_map(&expand_token/1)
+    |> MapSet.new()
   end
 
   defp tokens(text) do
