@@ -44,6 +44,7 @@ jobs:
             --exclude .env \
             --exclude _build \
             --exclude deps \
+            --exclude priv/static/assets \
             --exclude var \
             -e "ssh -i ~/.ssh/andnative_deploy -o StrictHostKeyChecking=yes" \
             ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"

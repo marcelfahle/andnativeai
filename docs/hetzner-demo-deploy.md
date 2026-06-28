@@ -31,6 +31,7 @@ rsync -az --delete \
   --exclude .env \
   --exclude _build \
   --exclude deps \
+  --exclude priv/static/assets \
   --exclude var \
   -e "ssh -i ~/.ssh/id_ed25519_mf2024" \
   ./ root@91.99.49.152:/opt/andnativeai/
@@ -51,7 +52,8 @@ Workflow:
 
 1. Check out `main`.
 2. Rsync tracked application files to `/opt/andnativeai`.
-3. Preserve server-only state by excluding `.env`, `var/`, `_build`, and `deps`.
+3. Preserve server-only state by excluding `.env`, `var/`, `_build`, `deps`,
+   and generated `priv/static/assets`.
 4. Run the existing Compose deploy command.
 5. Force-recreate `control-panel` and `slack-listener` so the running BEAM
    processes pick up the synced code.
