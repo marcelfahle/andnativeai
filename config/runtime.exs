@@ -90,7 +90,7 @@ if config_env() == :prod do
 
   config :andnative_ai,
          :mailer_from,
-         System.get_env("MAILER_FROM") || "andnative.ai <no-reply@#{host}>"
+         {"andnative.ai", System.get_env("MAILER_FROM") || "no-reply@#{host}"}
 
   # ## SSL Support
   #

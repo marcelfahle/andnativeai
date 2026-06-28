@@ -59,8 +59,8 @@ config :phoenix, :json_library, Jason
 config :andnative_ai, AndnativeAi.Mailer, adapter: Swoosh.Adapters.Local
 config :swoosh, :api_client, false
 
-# Default "from" address for transactional email (prod overrides via env).
-config :andnative_ai, :mailer_from, "andnative.ai <no-reply@andnativeai.marcelfahle.net>"
+# Default "from" identity for transactional email (prod overrides via env).
+config :andnative_ai, :mailer_from, {"andnative.ai", "no-reply@andnativeai.marcelfahle.net"}
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
