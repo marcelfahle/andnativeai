@@ -3,7 +3,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
 
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Agent
-  alias AndnativeAi.Runtime.{MemoryTool, OpenAIClient}
+  alias AndnativeAi.Runtime.{Audit, MemoryTool, OpenAIClient}
 
   @impl true
   def sync_agent(%Agent{} = agent) do
@@ -18,17 +18,30 @@ defmodule AndnativeAi.Runtime.OpenClaw do
   @impl true
   def dispatch_mention(%Agent{} = agent, slack_event) do
     question = question_from_event(slack_event)
-    {:ok, results} = MemoryTool.call(%{tenant_id: agent.tenant_id, query: question, limit: 3})
-    response = compose_response(agent, question, results)
+    request_id = Audit.request_id_from_event(slack_event)
 
-    {:ok,
-     %{
-       agent_id: agent.id,
-       question: question,
-       answer: response.answer,
-       citations: response.citations,
-       searched_memory?: true
-     }}
+    case MemoryTool.call(%{tenant_id: agent.tenant_id, query: question, limit: 3}) do
+      {:ok, results} ->
+        record_memory_searched(agent, request_id, results)
+        response = compose_response(agent, question, results)
+        record_answer_generated(agent, request_id, response, results)
+        record_model_runtime_error(agent, request_id, response)
+        record_citation_attached(agent, request_id, response.citations)
+
+        {:ok,
+         %{
+           agent_id: agent.id,
+           request_id: request_id,
+           question: question,
+           answer: response.answer,
+           citations: response.citations,
+           searched_memory?: true
+         }}
+
+      {:error, reason} ->
+        record_runtime_error(agent, request_id, reason)
+        {:error, reason}
+    end
   end
 
   @impl true
@@ -72,13 +85,25 @@ defmodule AndnativeAi.Runtime.OpenClaw do
   defp compose_response(agent, question, results) do
     citations = citations(results)
 
-    answer =
+    {answer, status, fallback_reason, runtime_error_reason} =
       case model_response(agent, question, results, citations) do
-        {:ok, text} -> ensure_citations(text, citations)
-        {:error, _reason} -> deterministic_response(agent, results, citations)
+        {:ok, text} ->
+          {ensure_citations(text, citations), "model", nil, nil}
+
+        {:error, {:model_error, reason}} ->
+          {deterministic_response(agent, results, citations), "fallback", reason, reason}
+
+        {:error, reason} ->
+          {deterministic_response(agent, results, citations), "fallback", reason, nil}
       end
 
-    %{answer: answer, citations: citations}
+    %{
+      answer: answer,
+      citations: citations,
+      status: status,
+      fallback_reason: fallback_reason,
+      runtime_error_reason: runtime_error_reason
+    }
   end
 
   defp model_response(agent, question, results, citations) do
@@ -92,13 +117,18 @@ defmodule AndnativeAi.Runtime.OpenClaw do
         {:error, :placeholder_openai_api_key}
 
       true ->
-        openai_client().response(%{
+        request = %{
           api_key: api_key,
           model: model(agent),
           instructions: model_instructions(agent),
           input: model_input(question, results, citations),
           max_output_tokens: 240
-        })
+        }
+
+        case openai_client().response(request) do
+          {:ok, text} -> {:ok, text}
+          {:error, reason} -> {:error, {:model_error, reason}}
+        end
     end
   end
 
@@ -202,6 +232,97 @@ defmodule AndnativeAi.Runtime.OpenClaw do
 
   defp prefix_answer(prefix, answer) do
     if String.starts_with?(answer, prefix), do: answer, else: "#{prefix} #{answer}"
+  end
+
+  defp record_memory_searched(agent, request_id, results) do
+    Audit.record_best_effort(%{
+      tenant_id: agent.tenant_id,
+      agent_id: agent.id,
+      request_id: request_id,
+      event_kind: "memory_searched",
+      component: "memory_tool",
+      actor: agent.name,
+      status: "ok",
+      summary: "#{agent.name} searched governed memory.",
+      metadata: %{
+        result_count: length(results),
+        citation_count: length(citations(results))
+      }
+    })
+  end
+
+  defp record_answer_generated(agent, request_id, response, results) do
+    metadata = %{
+      generation_mode: response.status,
+      result_count: length(results),
+      citation_count: length(response.citations)
+    }
+
+    metadata =
+      if response.fallback_reason do
+        Map.put(metadata, :fallback_reason, Audit.reason_summary(response.fallback_reason))
+      else
+        metadata
+      end
+
+    Audit.record_best_effort(%{
+      tenant_id: agent.tenant_id,
+      agent_id: agent.id,
+      request_id: request_id,
+      event_kind: "answer_generated",
+      component: "openclaw_runtime",
+      actor: agent.name,
+      status: response.status,
+      summary: "#{agent.name} generated a Slack answer.",
+      metadata: metadata
+    })
+  end
+
+  defp record_citation_attached(_agent, _request_id, []), do: :ok
+
+  defp record_citation_attached(agent, request_id, citations) do
+    Audit.record_best_effort(%{
+      tenant_id: agent.tenant_id,
+      agent_id: agent.id,
+      request_id: request_id,
+      event_kind: "citation_attached",
+      component: "openclaw_runtime",
+      actor: agent.name,
+      status: "attached",
+      summary: "#{agent.name} attached governed memory citations.",
+      metadata: %{citation_count: length(citations)},
+      citation_url: List.first(citations)
+    })
+  end
+
+  defp record_model_runtime_error(_agent, _request_id, %{runtime_error_reason: nil}), do: :ok
+
+  defp record_model_runtime_error(agent, request_id, response) do
+    Audit.record_best_effort(%{
+      tenant_id: agent.tenant_id,
+      agent_id: agent.id,
+      request_id: request_id,
+      event_kind: "runtime_error",
+      component: "openclaw_runtime",
+      actor: agent.name,
+      status: "error",
+      summary: "#{agent.name} model call failed; deterministic fallback answered.",
+      metadata: %{reason: Audit.reason_summary(response.runtime_error_reason)}
+    })
+  end
+
+  defp record_runtime_error(agent, request_id, reason) do
+    Audit.record_best_effort(%{
+      tenant_id: agent.tenant_id,
+      agent_id: agent.id,
+      request_id: request_id,
+      event_kind: "runtime_error",
+      component: "openclaw_runtime",
+      actor: agent.name,
+      status: "error",
+      summary: "#{agent.name} runtime dispatch failed.",
+      metadata: %{reason: Audit.reason_summary(reason)}
+    })
   end
 
   defp openai_client do

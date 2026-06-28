@@ -3,6 +3,7 @@ defmodule AndnativeAi.Memory do
 
   alias AndnativeAi.Repo
   alias AndnativeAi.Memory.{Agent, Item, Source, Tenant}
+  alias AndnativeAi.Runtime.Audit
 
   def list_tenants do
     Repo.all(from tenant in Tenant, order_by: tenant.name)
@@ -79,6 +80,15 @@ defmodule AndnativeAi.Memory do
     )
   end
 
+  def source_counts_by_type(tenant_id) do
+    Source
+    |> where([source], source.tenant_id == ^tenant_id and is_nil(source.deleted_at))
+    |> group_by([source], source.source_type)
+    |> select([source], {source.source_type, count(source.id)})
+    |> Repo.all()
+    |> Map.new()
+  end
+
   def list_all_sources(tenant_id) do
     Repo.all(
       from source in Source,
@@ -104,6 +114,14 @@ defmodule AndnativeAi.Memory do
       from item in Item,
         where: item.tenant_id == ^tenant_id and is_nil(item.deleted_at),
         order_by: [desc: item.inserted_at]
+    )
+  end
+
+  def count_memory_items(tenant_id) do
+    Repo.one(
+      from item in Item,
+        where: item.tenant_id == ^tenant_id and is_nil(item.deleted_at),
+        select: count(item.id)
     )
   end
 
@@ -144,7 +162,31 @@ defmodule AndnativeAi.Memory do
         )
         |> Repo.update_all(set: [deleted_at: now, updated_at: now])
 
+      record_audit_best_effort(%{
+        tenant_id: tenant_id,
+        source_id: source.id,
+        event_kind: "source_deleted",
+        component: "memory_service",
+        actor: "Memory service",
+        status: "deleted",
+        summary: "#{source.name} was removed from governed memory.",
+        metadata: %{
+          source_type: source.source_type,
+          source_external_id: source.source_id,
+          deleted_items_count: count
+        },
+        citation_url: source.permalink_or_url,
+        occurred_at: now
+      })
+
       %{source: source, deleted_items_count: count}
     end)
+  end
+
+  defp record_audit_best_effort(attrs) do
+    case Application.get_env(:andnative_ai, :audit_recorder, Audit) do
+      recorder when is_function(recorder, 1) -> recorder.(attrs)
+      recorder -> recorder.record_best_effort(attrs)
+    end
   end
 end

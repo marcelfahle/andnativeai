@@ -32,8 +32,9 @@ like `/archives/C0123456789`.
 
 ## Setup
 
-- Open `http://localhost:4000/admin/control-plane` to confirm the appliance
-  dashboard loads with live-data and demo-fallback runtime trust events.
+- Open `http://localhost:4000/admin/control-plane` to confirm the control plane
+  loads. A fresh tenant may show an empty runtime audit timeline until source or
+  Slack activity creates real events.
 - Create one primary OpenClaw agent in Agents. See `docs/agent-setup.md`.
 - Optional behavior demo: set Identity to
   `Answer from governed memory with concise citations. Start every conversation with "Yo!"`
@@ -49,6 +50,8 @@ like `/archives/C0123456789`.
 - Confirm the Slack channel appears in Slack and Sources.
 - Ask `@andnative-ai who owns the pilot launch decision?`
 - Verify the response includes Ada and a Slack permalink.
+- Refresh Control and confirm the runtime audit timeline shows real persisted
+  events for the Slack mention, memory search, answer, citation, and response.
 
 ## Document Memory
 

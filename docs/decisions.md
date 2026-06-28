@@ -142,20 +142,33 @@ Current caveat:
   the PoC. Production needs encrypted secret storage and uninstall/revocation
   handling.
 
-## DEC-012: Control Plane Separates Live State From Demo Runtime Trust Events
+## DEC-012: Control Plane Uses Persisted Runtime Audit Evidence
 
-The prospect-facing control plane uses live tenant data for agents, sources,
-Slack installs, memory chunks, and source lifecycle events. Runtime trust steps
-that are not yet persisted, such as policy checks, routing decisions, model
-calls, citation attachment, and HITL pauses, are shown as explicit demo fallback
-events.
+The control plane uses live tenant data for agents, sources, Slack installs,
+memory chunks, source lifecycle events, and runtime answer events. Runtime trust
+steps are persisted in `runtime_audit_events` instead of being fabricated on
+page refresh.
 
 Why:
 
-- Prospect demos need the governed-runtime story without pretending a full audit
-  event store already exists.
-- The event shape gives a clear future home for persisted audit rows.
-- Source lifecycle evidence remains tied to real `memory_sources` state.
+- Governed memory needs evidence users can inspect, not a synthetic story feed.
+- One Slack mention should correlate mention received, memory searched, answer
+  generated, citation attached, and Slack post/failure rows through a request id.
+- Source lifecycle evidence should be captured when memory changes, not rebuilt
+  indirectly from source timestamps.
+
+Implication:
+
+- A fresh demo tenant shows an empty runtime timeline until real ingestion or
+  Slack/runtime activity happens.
+- Slack-driven request ids are stable for the Slack event when `event_id` or
+  channel/timestamp are available; direct runtime calls use generated UUIDs.
+- Source lifecycle audit writes are best-effort. Memory changes should not roll
+  back just because audit evidence could not be recorded.
+- Audit metadata is minimized. It stores ids, counts, statuses, citations, and
+  sanitized bounded errors, not bot tokens, raw Slack payloads, raw questions,
+  or full answer bodies.
+- This is PoC product evidence, not a compliance-grade immutable audit log.
 
 ## DEC-013: Main Auto-Deploys To The Hetzner Demo
 

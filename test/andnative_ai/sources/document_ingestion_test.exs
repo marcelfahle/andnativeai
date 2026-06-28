@@ -3,6 +3,7 @@ defmodule AndnativeAi.Sources.DocumentIngestionTest do
 
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Service
+  alias AndnativeAi.Runtime.Audit
   alias AndnativeAi.Sources.DocumentIngestion
 
   setup do
@@ -40,6 +41,11 @@ defmodule AndnativeAi.Sources.DocumentIngestionTest do
     assert File.exists?(stored_path)
     assert source.name == "handbook.md"
     assert length(items) == 2
+
+    assert Enum.any?(
+             Audit.list_recent_events(tenant.id, limit: 10),
+             &(&1.event_kind == "source_ingested" and &1.source_id == source.id)
+           )
 
     [result | _] = Service.search(tenant.id, "reimbursement approval", %{limit: 2})
     assert result.text =~ "Refund approvals"

@@ -5,6 +5,7 @@ defmodule AndnativeAi.Memory.Service do
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.{Embeddings, Item, Source}
   alias AndnativeAi.Repo
+  alias AndnativeAi.Runtime.Audit
 
   def ingest(tenant_id, source_attrs, chunks, provenance, visibility, retention) do
     Repo.transaction(fn ->
@@ -33,6 +34,8 @@ defmodule AndnativeAi.Memory.Service do
         source
         |> Source.changeset(%{status: "ready", last_ingested_at: utc_now()})
         |> Repo.update!()
+
+      record_ingest_events!(tenant_id, source, items, visibility, retention)
 
       %{source: source, items: items}
     end)
@@ -75,6 +78,58 @@ defmodule AndnativeAi.Memory.Service do
   end
 
   def delete_source(tenant_id, source_id), do: Memory.soft_delete_source(tenant_id, source_id)
+
+  defp record_ingest_events!(tenant_id, source, items, visibility, retention) do
+    first_item = List.first(items)
+    item_count = length(items)
+    retention_class = retention_class(retention)
+    citation_url = source_citation_url(source, first_item)
+
+    base_metadata = %{
+      source_type: source.source_type,
+      source_external_id: source.source_id,
+      item_count: item_count,
+      channel_id: first_item && first_item.channel_id,
+      visibility: visibility,
+      retention_class: retention_class
+    }
+
+    base_attrs = %{
+      tenant_id: tenant_id,
+      source_id: source.id,
+      memory_item_id: first_item && first_item.id,
+      component: "memory_service",
+      metadata: base_metadata,
+      citation_url: citation_url
+    }
+
+    record_audit_event(
+      base_attrs,
+      event_kind: "source_ingested",
+      actor: source_actor(source.source_type),
+      status: source.status,
+      summary: "#{source.name} entered governed memory."
+    )
+
+    record_audit_event(
+      base_attrs,
+      event_kind: "memory_indexed",
+      actor: "Memory service",
+      status: retention_class,
+      summary: "#{item_count} memory chunks indexed for #{source.name}."
+    )
+  end
+
+  defp record_audit_event(base_attrs, overrides) do
+    record_audit_best_effort(Map.merge(base_attrs, Map.new(overrides)))
+  end
+
+  defp record_audit_best_effort(attrs) do
+    case Application.get_env(:andnative_ai, :audit_recorder, Audit) do
+      recorder when is_function(recorder, 1) -> recorder.(attrs)
+      recorder -> recorder.record_best_effort(attrs)
+    end
+  end
 
   defp upsert_source!(tenant_id, attrs) do
     attrs =
@@ -128,6 +183,17 @@ defmodule AndnativeAi.Memory.Service do
 
   defp retention_expires_at(retention) when is_map(retention), do: Map.get(retention, :expires_at)
   defp retention_expires_at(_retention), do: nil
+
+  defp source_actor("document"), do: "Document ingestion"
+  defp source_actor("slack_channel"), do: "Slack listener"
+  defp source_actor("slack_thread"), do: "Slack listener"
+  defp source_actor(_source_type), do: "Source adapter"
+
+  defp source_citation_url(source, nil), do: source.permalink_or_url
+
+  defp source_citation_url(source, item) do
+    item.provenance["permalink"] || source.permalink_or_url
+  end
 
   defp apply_scope(query, scope) do
     Enum.reduce(scope, query, fn
