@@ -72,8 +72,10 @@ if config_env() == :prod do
   # uses SMTP; with neither set, prod falls back to the Local adapter so an
   # unconfigured deploy never crashes — emails are previewed/logged instead of
   # silently lost. No secret is committed; everything comes from the environment.
+  resend_api_key = System.get_env("RESEND_API_KEY") |> to_string() |> String.trim()
+
   cond do
-    (resend_api_key = System.get_env("RESEND_API_KEY")) not in [nil, ""] ->
+    resend_api_key != "" ->
       # The Resend adapter sends over HTTP, so it needs a Swoosh API client; Req
       # is already a dependency and needs no supervision-tree setup.
       config :swoosh, :api_client, Swoosh.ApiClient.Req

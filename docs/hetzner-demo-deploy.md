@@ -190,7 +190,9 @@ takes precedence over SMTP). Setup:
    MAILER_FROM=no-reply@andnativeai.marcelfahle.net   # a Resend-verified sender
    ```
 
-That's all — no `MAILER_ADAPTER` needed; the next deploy delivers via Resend.
+**Both are required:** `RESEND_API_KEY` authenticates, and `MAILER_FROM` must be
+a verified Resend sender — sends from an unverified domain are rejected. No
+`MAILER_ADAPTER` is needed; the next deploy delivers via Resend.
 
 **Alternative: SMTP.** Instead of Resend, set `MAILER_ADAPTER=smtp` plus the
 `SMTP_*` vars:
