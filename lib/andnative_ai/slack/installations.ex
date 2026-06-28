@@ -14,6 +14,16 @@ defmodule AndnativeAi.Slack.Installations do
     )
   end
 
+  def count_installations(tenant_id) do
+    Repo.one(
+      from installation in Installation,
+        where:
+          installation.tenant_id == ^tenant_id and installation.status == "active" and
+            is_nil(installation.deleted_at),
+        select: count(installation.id)
+    )
+  end
+
   def latest_installation(tenant_id) do
     Repo.one(
       from installation in Installation,
