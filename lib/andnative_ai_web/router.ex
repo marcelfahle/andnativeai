@@ -52,6 +52,8 @@ defmodule AndnativeAiWeb.Router do
       live "/admin/documents", Admin.DocumentsLive
       live "/admin/slack", Admin.SlackLive
       live "/admin/runtime", Admin.RuntimeLive
+
+      live "/users/settings", UserSettingsLive
     end
   end
 

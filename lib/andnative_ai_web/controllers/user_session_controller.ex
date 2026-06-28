@@ -4,11 +4,20 @@ defmodule AndnativeAiWeb.UserSessionController do
   alias AndnativeAi.Accounts
   alias AndnativeAiWeb.UserAuth
 
-  def create(conn, %{"user" => %{"email" => email, "password" => password}})
-      when is_binary(email) and is_binary(password) do
+  # Re-login after a self-serve password change (phx-trigger-action posts here).
+  def create(conn, %{"_action" => "password_updated"} = params) do
+    create(conn, params, "Password updated successfully!")
+  end
+
+  def create(conn, params) do
+    create(conn, params, "Welcome back!")
+  end
+
+  defp create(conn, %{"user" => %{"email" => email, "password" => password}}, info)
+       when is_binary(email) and is_binary(password) do
     if user = Accounts.get_user_by_email_and_password(email, password) do
       conn
-      |> put_flash(:info, "Welcome back!")
+      |> put_flash(:info, info)
       |> UserAuth.log_in_user(user)
     else
       # Do not disclose whether the email is registered (no user enumeration).
@@ -21,7 +30,7 @@ defmodule AndnativeAiWeb.UserSessionController do
 
   # Malformed or missing credentials (non-browser clients) get the same generic
   # error rather than a 500.
-  def create(conn, _params) do
+  defp create(conn, _params, _info) do
     conn
     |> put_flash(:error, "Invalid email or password")
     |> redirect(to: ~p"/login")
