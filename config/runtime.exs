@@ -67,6 +67,31 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+  # Email delivery (Swoosh). Select the adapter from MAILER_ADAPTER; when unset
+  # or unrecognized, fall back to the Local adapter so an unconfigured prod
+  # never crashes — emails are previewed/logged instead of silently lost.
+  # Set MAILER_ADAPTER=smtp plus the SMTP_* vars to send real mail. No secret
+  # is committed; everything comes from the environment.
+  case System.get_env("MAILER_ADAPTER") do
+    "smtp" ->
+      config :andnative_ai, AndnativeAi.Mailer,
+        adapter: Swoosh.Adapters.SMTP,
+        relay: System.get_env("SMTP_RELAY"),
+        username: System.get_env("SMTP_USERNAME"),
+        password: System.get_env("SMTP_PASSWORD"),
+        port: String.to_integer(System.get_env("SMTP_PORT") || "587"),
+        ssl: System.get_env("SMTP_SSL") in ~w(true 1),
+        tls: :always,
+        auth: :always
+
+    _ ->
+      config :andnative_ai, AndnativeAi.Mailer, adapter: Swoosh.Adapters.Local
+  end
+
+  config :andnative_ai,
+         :mailer_from,
+         System.get_env("MAILER_FROM") || "andnative.ai <no-reply@#{host}>"
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

@@ -65,6 +65,8 @@ defmodule AndnativeAi.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 0.26"},
       {:bcrypt_elixir, "~> 3.0"},
+      {:swoosh, "~> 1.16"},
+      {:gen_smtp, "~> 1.2"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"}

@@ -53,6 +53,15 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Swoosh mailer. Default to the Local adapter (in-memory preview); test and
+# prod override below. No HTTP API client is needed for the Local/Test/SMTP
+# adapters.
+config :andnative_ai, AndnativeAi.Mailer, adapter: Swoosh.Adapters.Local
+config :swoosh, :api_client, false
+
+# Default "from" address for transactional email (prod overrides via env).
+config :andnative_ai, :mailer_from, "andnative.ai <no-reply@andnativeai.marcelfahle.net>"
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
