@@ -45,6 +45,9 @@ defmodule AndnativeAiWeb.Layouts do
         </.link>
 
         <nav class="flex flex-wrap items-center gap-1">
+          <.link navigate={~p"/admin/control-plane"} class="btn btn-ghost btn-sm">
+            <.icon name="hero-shield-check" class="size-4" /> Control
+          </.link>
           <.link navigate={~p"/admin/agents"} class="btn btn-ghost btn-sm">
             <.icon name="hero-cpu-chip" class="size-4" /> Agents
           </.link>

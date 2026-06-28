@@ -20,6 +20,7 @@ defmodule AndnativeAiWeb.Router do
     get "/", PageController, :home
     get "/slack/install", SlackOAuthController, :install
     get "/slack/oauth/callback", SlackOAuthController, :callback
+    live "/admin/control-plane", Admin.ControlPlaneLive
     live "/admin/agents", Admin.AgentsLive
     live "/admin/sources", Admin.DocumentsLive
     live "/admin/documents", Admin.DocumentsLive

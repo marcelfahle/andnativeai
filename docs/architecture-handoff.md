@@ -31,6 +31,23 @@ Search excludes deleted sources and deleted items.
 
 ## Main Flows
 
+### Admin Control Plane
+
+Path:
+`AndnativeAiWeb.Admin.ControlPlaneLive` ->
+`AndnativeAi.ControlPlane` ->
+current agents, sources, Slack installs, memory items, and OpenClaw health.
+
+Behavior:
+
+- Shows the prospect-facing governed-memory appliance dashboard at
+  `/admin/control-plane`.
+- Uses live data for source counts, memory chunk counts, Slack installs, agent
+  sync health, and source lifecycle events.
+- Shows explicit demo-fallback runtime trust events for policy checks, memory
+  search, answer generation, citation attachment, routing, and human approval
+  until persisted runtime audit events exist.
+
 ### Document Upload
 
 Path:
