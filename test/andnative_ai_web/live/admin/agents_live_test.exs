@@ -5,6 +5,8 @@ defmodule AndnativeAiWeb.Admin.AgentsLiveTest do
 
   alias AndnativeAi.Memory
 
+  setup :register_and_log_in_user
+
   setup do
     workspace =
       Path.join(

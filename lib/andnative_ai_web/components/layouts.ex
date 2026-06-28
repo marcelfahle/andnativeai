@@ -27,9 +27,9 @@ defmodule AndnativeAiWeb.Layouts do
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
 
-  attr :current_scope, :map,
+  attr :current_user, :map,
     default: nil,
-    doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
+    doc: "the currently authenticated user, when present"
 
   slot :inner_block, required: true
 
@@ -61,12 +61,38 @@ defmodule AndnativeAiWeb.Layouts do
             <.icon name="hero-command-line" class="size-4" /> Runtime
           </.link>
           <.theme_toggle />
+          <div :if={@current_user} class="flex items-center gap-2 pl-2">
+            <span class="hidden text-xs text-base-content/60 sm:inline">{@current_user.email}</span>
+            <.link href={~p"/logout"} method="delete" class="btn btn-ghost btn-sm">
+              <.icon name="hero-arrow-right-on-rectangle" class="size-4" /> Log out
+            </.link>
+          </div>
         </nav>
       </div>
     </header>
 
     <main class="px-4 py-8 sm:px-6 lg:px-8">
       <div class="mx-auto max-w-6xl">
+        {render_slot(@inner_block)}
+      </div>
+    </main>
+
+    <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc """
+  Renders a minimal, centered layout for unauthenticated pages such as login.
+
+  Includes the flash group but omits the admin navigation.
+  """
+  attr :flash, :map, required: true, doc: "the map of flash messages"
+  slot :inner_block, required: true
+
+  def auth(assigns) do
+    ~H"""
+    <main class="px-4 py-8 sm:px-6 lg:px-8">
+      <div class="mx-auto w-full max-w-sm">
         {render_slot(@inner_block)}
       </div>
     </main>

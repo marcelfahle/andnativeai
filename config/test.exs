@@ -21,6 +21,9 @@ config :andnative_ai, AndnativeAiWeb.Endpoint,
   secret_key_base: "ngBQWR4SSn3xm2rl4Pt2EfUPCCBmscZ4W4ytxFh0kigRz91qP+bQ7F3Jf0JL+12m",
   server: false
 
+# Only use the lowest bcrypt cost factor in tests so the suite stays fast.
+config :bcrypt_elixir, :log_rounds, 1
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

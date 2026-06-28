@@ -6,6 +6,8 @@ defmodule AndnativeAiWeb.Admin.StatusPagesTest do
   alias AndnativeAi.Memory
   alias AndnativeAi.Slack.Installations
 
+  setup :register_and_log_in_user
+
   test "sources and Slack pages show Slack channel ingestion status", %{conn: conn} do
     tenant = Memory.ensure_demo_tenant!()
 
