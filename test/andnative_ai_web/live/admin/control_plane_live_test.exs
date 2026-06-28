@@ -7,6 +7,8 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLiveTest do
   alias AndnativeAi.Memory.Service
   alias AndnativeAi.Runtime.Audit
 
+  setup :register_and_log_in_user
+
   test "fresh control plane shows status cards and an honest empty timeline", %{conn: conn} do
     tenant = Memory.ensure_demo_tenant!()
 

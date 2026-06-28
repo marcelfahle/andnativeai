@@ -32,7 +32,7 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_user={@current_user}>
       <div id="control-plane-dashboard" class="space-y-8">
         <section class="flex flex-col gap-3 border-b border-base-300 pb-6 md:flex-row md:items-end md:justify-between">
           <div>

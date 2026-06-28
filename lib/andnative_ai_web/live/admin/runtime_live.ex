@@ -38,7 +38,7 @@ defmodule AndnativeAiWeb.Admin.RuntimeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_user={@current_user}>
       <div class="space-y-8">
         <section class="border-b border-base-300 pb-6">
           <p class="text-sm font-medium text-base-content/60">{@tenant.name}</p>

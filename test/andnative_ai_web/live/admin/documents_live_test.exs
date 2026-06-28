@@ -5,6 +5,8 @@ defmodule AndnativeAiWeb.Admin.DocumentsLiveTest do
 
   alias AndnativeAi.Memory.Service
 
+  setup :register_and_log_in_user
+
   setup do
     raw_path =
       Path.join(System.tmp_dir!(), "andnative-live-docs-#{System.unique_integer([:positive])}")
