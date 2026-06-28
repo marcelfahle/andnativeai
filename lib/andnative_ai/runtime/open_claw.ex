@@ -3,7 +3,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
 
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Agent
-  alias AndnativeAi.Runtime.MemoryTool
+  alias AndnativeAi.Runtime.{MemoryTool, OpenAIClient}
 
   @impl true
   def sync_agent(%Agent{} = agent) do
@@ -19,7 +19,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
   def dispatch_mention(%Agent{} = agent, slack_event) do
     question = question_from_event(slack_event)
     {:ok, results} = MemoryTool.call(%{tenant_id: agent.tenant_id, query: question, limit: 3})
-    response = compose_response(agent, results)
+    response = compose_response(agent, question, results)
 
     {:ok,
      %{
@@ -69,26 +69,143 @@ defmodule AndnativeAi.Runtime.OpenClaw do
     }
   end
 
-  defp compose_response(_agent, []) do
-    %{answer: "I searched memory but could not find a relevant source.", citations: []}
+  defp compose_response(agent, question, results) do
+    citations = citations(results)
+
+    answer =
+      case model_response(agent, question, results, citations) do
+        {:ok, text} -> ensure_citations(text, citations)
+        {:error, _reason} -> deterministic_response(agent, results, citations)
+      end
+
+    %{answer: answer, citations: citations}
   end
 
-  defp compose_response(agent, [top | _] = results) do
-    citations =
-      results
-      |> Enum.map(& &1.citation_url)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
+  defp model_response(agent, question, results, citations) do
+    api_key = System.get_env("OPENAI_API_KEY", "")
 
+    cond do
+      api_key == "" ->
+        {:error, :missing_openai_api_key}
+
+      String.contains?(api_key, "replace-me") ->
+        {:error, :placeholder_openai_api_key}
+
+      true ->
+        openai_client().response(%{
+          api_key: api_key,
+          model: model(agent),
+          instructions: model_instructions(agent),
+          input: model_input(question, results, citations),
+          max_output_tokens: 240
+        })
+    end
+  end
+
+  defp deterministic_response(agent, [], _citations) do
+    agent
+    |> identity_prefix()
+    |> prefix_answer("I searched memory but could not find a relevant source.")
+  end
+
+  defp deterministic_response(agent, [top | _], citations) do
     citation_text =
       citations
       |> Enum.take(2)
       |> Enum.join(" ")
 
-    %{
-      answer: "#{agent.name}: #{top.text}\n\nSource: #{citation_text}",
-      citations: citations
-    }
+    answer = "#{agent.name}: #{top.text}\n\nSource: #{citation_text}"
+
+    agent
+    |> identity_prefix()
+    |> prefix_answer(answer)
+  end
+
+  defp citations(results) do
+    results
+    |> Enum.map(& &1.citation_url)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  defp model(agent) do
+    agent.model || System.get_env("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
+  end
+
+  defp model_instructions(agent) do
+    """
+    You are #{agent.name}.
+
+    Follow this agent identity exactly:
+    #{agent.identity}
+
+    Answer Slack questions only from governed memory in the provided context.
+    If the memory context is empty or does not answer the question, say that you could not find a relevant source.
+    Keep answers concise and include the provided citation URLs when using memory.
+    """
+  end
+
+  defp model_input(question, results, citations) do
+    """
+    Question:
+    #{question}
+
+    Governed memory:
+    #{memory_context(results, citations)}
+
+    Return one Slack-ready answer.
+    """
+  end
+
+  defp memory_context([], _citations), do: "(empty)"
+
+  defp memory_context(results, citations) do
+    results
+    |> Enum.with_index(1)
+    |> Enum.map(fn {result, index} ->
+      citation = Enum.at(citations, index - 1) || result.citation_url || ""
+
+      """
+      [#{index}]
+      #{result.text}
+      Citation: #{citation}
+      """
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp ensure_citations(answer, []), do: answer
+
+  defp ensure_citations(answer, citations) do
+    if Enum.any?(citations, &String.contains?(answer, &1)) do
+      answer
+    else
+      source_text = citations |> Enum.take(2) |> Enum.join(" ")
+      answer <> "\n\nSource: " <> source_text
+    end
+  end
+
+  defp identity_prefix(%Agent{identity: identity}) when is_binary(identity) do
+    case Regex.run(
+           ~r/start (?:every conversation|each conversation|every response|each response) with ["“']([^"”']+)["”']/i,
+           identity
+         ) do
+      [_match, prefix] -> String.trim(prefix)
+      _no_match -> nil
+    end
+  end
+
+  defp identity_prefix(_agent), do: nil
+
+  defp prefix_answer(nil, answer), do: answer
+  defp prefix_answer("", answer), do: answer
+
+  defp prefix_answer(prefix, answer) do
+    if String.starts_with?(answer, prefix), do: answer, else: "#{prefix} #{answer}"
+  end
+
+  defp openai_client do
+    Application.get_env(:andnative_ai, :openai_client, OpenAIClient)
   end
 
   defp question_from_event(%{"text" => text}) do

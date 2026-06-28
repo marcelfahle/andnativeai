@@ -31,6 +31,9 @@ like `/archives/C0123456789`.
 ## Setup
 
 - Create an OpenClaw agent in Agents.
+- Optional behavior demo: set Identity to
+  `Answer from governed memory with concise citations. Start every conversation with "Yo!"`
+  and save.
 - Sync the agent.
 
 ## Slack

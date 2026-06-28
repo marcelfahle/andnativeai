@@ -13,18 +13,44 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
     end
   end
 
+  defmodule FakeOpenAIClient do
+    def response(request) do
+      send(self(), {:openai_request, request})
+
+      {:ok,
+       "Yo! Refund approvals require support escalation.\n\nSource: https://docs.example.com/refunds"}
+    end
+  end
+
   setup do
     workspace =
       Path.join(System.tmp_dir!(), "andnative-openclaw-#{System.unique_integer([:positive])}")
 
     previous_workspace = Application.get_env(:andnative_ai, :openclaw_workspace_path)
+    previous_openai_client = Application.get_env(:andnative_ai, :openai_client)
+    previous_openai_key = System.get_env("OPENAI_API_KEY")
+
     Application.put_env(:andnative_ai, :openclaw_workspace_path, workspace)
+    Application.delete_env(:andnative_ai, :openai_client)
+    System.delete_env("OPENAI_API_KEY")
 
     on_exit(fn ->
       if previous_workspace do
         Application.put_env(:andnative_ai, :openclaw_workspace_path, previous_workspace)
       else
         Application.delete_env(:andnative_ai, :openclaw_workspace_path)
+      end
+
+      if previous_openai_client do
+        Application.put_env(:andnative_ai, :openai_client, previous_openai_client)
+      else
+        Application.delete_env(:andnative_ai, :openai_client)
+      end
+
+      if previous_openai_key do
+        System.put_env("OPENAI_API_KEY", previous_openai_key)
+      else
+        System.delete_env("OPENAI_API_KEY")
       end
 
       File.rm_rf(workspace)
@@ -67,6 +93,52 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
     assert citation =~ "refunds"
   end
 
+  test "dispatch_mention applies a start-with identity instruction without an API key" do
+    {tenant, agent} =
+      agent_fixture(
+        "identity-fallback",
+        ~s(Answer from governed memory with concise citations. Start every conversation with "Yo!")
+      )
+
+    ingest_refund_memory(tenant)
+
+    assert {:ok, response} =
+             OpenClaw.dispatch_mention(agent, %{
+               "type" => "app_mention",
+               "text" => "<@UBOT> How do refund approvals work?"
+             })
+
+    assert String.starts_with?(response.answer, "Yo!")
+    assert response.answer =~ "Refund approvals require support escalation"
+  end
+
+  test "dispatch_mention sends agent identity to model-backed responder when configured" do
+    System.put_env("OPENAI_API_KEY", "sk-test")
+    Application.put_env(:andnative_ai, :openai_client, FakeOpenAIClient)
+
+    {tenant, agent} =
+      agent_fixture(
+        "identity-model",
+        ~s(Answer from governed memory with concise citations. Start every conversation with "Yo!")
+      )
+
+    ingest_refund_memory(tenant)
+
+    assert {:ok, response} =
+             OpenClaw.dispatch_mention(agent, %{
+               "type" => "app_mention",
+               "text" => "<@UBOT> How do refund approvals work?"
+             })
+
+    assert response.answer =~ "Yo!"
+    assert response.answer =~ "https://docs.example.com/refunds"
+
+    assert_received {:openai_request, request}
+    assert request.instructions =~ agent.identity
+    assert request.input =~ "How do refund approvals work?"
+    assert request.input =~ "Refund approvals require support escalation"
+  end
+
   test "Slack app_mention routes to responder and posts answer" do
     {tenant, agent} = agent_fixture("mention")
     ingest_refund_memory(tenant)
@@ -106,7 +178,7 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
              )
   end
 
-  defp agent_fixture(slug) do
+  defp agent_fixture(slug, identity \\ "Answer from governed memory.") do
     {:ok, tenant} =
       Memory.create_tenant(%{
         name: String.upcase(slug),
@@ -117,7 +189,7 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
     {:ok, agent} =
       Memory.create_agent(tenant.id, %{
         name: "Demo Agent",
-        identity: "Answer from governed memory.",
+        identity: identity,
         model: "gpt-4.1-mini",
         runtime: "openclaw",
         status: "active"
