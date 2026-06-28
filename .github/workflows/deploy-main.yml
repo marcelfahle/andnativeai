@@ -65,8 +65,19 @@ jobs:
 
           ssh -i ~/.ssh/andnative_deploy -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" <<'REMOTE'
           set -euo pipefail
-          sleep 5
-          docker exec andnative-control-panel curl -fsS -o /dev/null http://localhost:4000/admin/control-plane
-          docker exec andnative-control-panel curl -fsS -o /dev/null http://localhost:4000/admin/slack
-          docker exec andnative-control-panel curl -fsS -o /dev/null http://localhost:4000/admin/agents
+
+          for path in /admin/control-plane /admin/slack /admin/agents; do
+            for attempt in $(seq 1 30); do
+              if docker exec andnative-control-panel curl -fsS -o /dev/null "http://localhost:4000${path}"; then
+                break
+              fi
+
+              if [ "$attempt" = "30" ]; then
+                echo "Timed out waiting for ${path}"
+                exit 1
+              fi
+
+              sleep 2
+            done
+          done
           REMOTE
