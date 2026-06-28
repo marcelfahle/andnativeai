@@ -14,6 +14,7 @@ This deployment shares the importer box but isolates the PoC:
 - Separate repo directory: `/opt/andnativeai`
 - Separate Compose project
 - Private Postgres/Redis/MinIO
+- Phoenix production release image (`MIX_ENV=prod`), not `mix phx.server`
 - `control-panel` attached to Caddy's `deploy_default` network
 - Caddy terminates TLS; the admin UI is protected by app-level login. Caddy
   basic auth is now optional (see [Admin authentication](#admin-authentication))
@@ -31,9 +32,9 @@ Workflow:
 2. Rsync tracked application files to `/opt/andnativeai`.
 3. Preserve server-only state by excluding `.env`, `var/`, `_build`, `deps`,
    and generated `priv/static/assets`.
-4. Run the existing Compose deploy command.
-5. Force-recreate `control-panel` and `slack-listener` so the running BEAM
-   processes pick up the synced code.
+4. Build the release Docker target and restart the Compose stack.
+5. Force-recreate `control-panel` and `slack-listener` so the running release
+   processes pick up the rebuilt image.
 6. Verify the app is healthy: an unauthenticated request to an admin route
    (e.g. `/admin/agents`) redirects to `/login`, and a logged-in session reaches
    the admin UI. If Caddy basic auth is kept as an outer belt, the
@@ -49,6 +50,16 @@ Server setup:
 - User: `andnative-deploy`
 - App path: `/opt/andnativeai`
 - User must be able to write app files and run Docker Compose.
+- `/opt/andnativeai/.env` must contain production-only secrets:
+
+  ```sh
+  SECRET_KEY_BASE=<generated with mix phx.gen.secret>
+  RESEND_API_KEY=re_...                         # optional until email is needed
+  MAILER_FROM=no-reply@andnativeai.marcelfahle.net
+  ```
+
+`SECRET_KEY_BASE` is required. Without it the release fails fast instead of
+falling back to the committed dev secret.
 
 Manual workflow dispatch:
 
@@ -79,6 +90,51 @@ On the server:
 cd /opt/andnativeai/deploy
 docker compose -p andnativeai -f hetzner-demo.compose.yml up -d --build
 ```
+
+## Production Runtime
+
+The Hetzner stack runs an OTP release from the Docker `release` target:
+
+- `control-panel` runs `/app/bin/control-panel`, which creates the configured
+  database when absent, runs migrations, runs `priv/repo/seeds.exs`, and starts
+  `/app/bin/server` with `PHX_SERVER=true`.
+- `slack-listener` runs `/app/bin/slack-listener` with
+  `SERVICE_ROLE=slack-listener`. It uses the same release image but does not
+  start the HTTP server.
+- The release reads `DATABASE_URL`, `SECRET_KEY_BASE`, `PHX_HOST`, `PORT`,
+  Slack credentials, OpenAI credentials, and mailer credentials from env.
+- Production services do **not** bind-mount the repo, `deps`, or `_build` into
+  `/app`.
+
+Useful release commands:
+
+```sh
+cd /opt/andnativeai/deploy
+docker compose -p andnativeai -f hetzner-demo.compose.yml exec control-panel ./bin/migrate
+docker compose -p andnativeai -f hetzner-demo.compose.yml exec control-panel ./bin/andnative_ai eval "AndnativeAi.Release.seed()"
+```
+
+### One-time database preservation
+
+The original demo stack used the database name `andnative_ai_dev`. The production
+release uses `andnative_ai_prod`. Before the first prod-release deploy on an
+existing host, copy the old database once if it contains data you want to keep:
+
+```sh
+cd /opt/andnativeai/deploy
+docker compose -p andnativeai -f hetzner-demo.compose.yml up -d postgres
+docker compose -p andnativeai -f hetzner-demo.compose.yml exec postgres sh -lc \
+  'if psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = '\''andnative_ai_prod'\''" | grep -q 1; then
+     echo "andnative_ai_prod already exists; inspect it before copying"
+   else
+     createdb -U postgres andnative_ai_prod
+     pg_dump -U postgres andnative_ai_dev | psql -U postgres andnative_ai_prod
+   fi'
+```
+
+Skip the copy only when starting with a clean production database is acceptable.
+The release startup still runs migrations afterward, so copied data is upgraded
+to the current schema.
 
 ## Caddy
 
@@ -121,10 +177,9 @@ The admin UI uses app-level email/password login. Users live in the `users`
 table, and every `/admin/*` route (plus `/slack/install`) requires a logged-in
 session. `/slack/oauth/callback` stays public so Slack can complete installs.
 
-The `control-panel` entrypoint (`bin/control-panel`) runs `mix ecto.migrate`
-(which seeds the first admin — see below) and `mix run priv/repo/seeds.exs` on
-every start, so the `users` table and admins are provisioned automatically on
-deploy.
+The release `control-panel` entrypoint runs `AndnativeAi.Release.create/0`,
+`AndnativeAi.Release.migrate/0`, and `AndnativeAi.Release.seed/0` on every
+start, so the `users` table and admins are provisioned automatically on deploy.
 
 ### First login
 
@@ -155,7 +210,7 @@ to send. You can't delete your own account or the last remaining admin.
 
   ```sh
   docker compose -p andnativeai -f /opt/andnativeai/deploy/hetzner-demo.compose.yml \
-    exec control-panel mix run priv/repo/seeds.exs
+    exec control-panel ./bin/andnative_ai eval "AndnativeAi.Release.seed()"
   ```
 
 ### Resetting a forgotten password
@@ -168,7 +223,7 @@ require the current password:
 ```sh
 docker compose -p andnativeai -f /opt/andnativeai/deploy/hetzner-demo.compose.yml \
   exec control-panel \
-  mix run -e 'u = AndnativeAi.Accounts.get_user_by_email("user@example.com"); AndnativeAi.Accounts.reset_user_password(u, %{password: "a new strong password"})'
+  ./bin/andnative_ai eval 'u = AndnativeAi.Accounts.get_user_by_email("user@example.com"); AndnativeAi.Accounts.reset_user_password(u, %{password: "a new strong password"})'
 ```
 
 The last remaining user can never be deleted, so the app can't be locked out.
@@ -202,7 +257,8 @@ takes precedence over SMTP). Setup:
 
 **Both are required:** `RESEND_API_KEY` authenticates, and `MAILER_FROM` must be
 a verified Resend sender — sends from an unverified domain are rejected. No
-`MAILER_ADAPTER` is needed; the next deploy delivers via Resend.
+`MAILER_ADAPTER` is needed; because the server now runs in `MIX_ENV=prod`, the
+next deploy delivers via Resend through the prod runtime config.
 
 **Alternative: SMTP.** Instead of Resend, set `MAILER_ADAPTER=smtp` plus the
 `SMTP_*` vars:

@@ -14,9 +14,13 @@ docker compose up --build
 
 Then open http://localhost:4000.
 
-The control-panel container runs `mix ecto.create` and `mix ecto.migrate` on
-startup. The Postgres service uses the `pgvector/pgvector:pg16` image and the
-first migration enables the `vector` extension.
+The local control-panel container uses the Docker `dev` target and runs the
+Mix-based dev entrypoint on startup. The Postgres service uses the
+`pgvector/pgvector:pg16` image and the first migration enables the `vector`
+extension.
+
+Production on Hetzner uses the Docker `release` target and release commands
+instead of `mix phx.server`; see `docs/hetzner-demo-deploy.md`.
 
 ## Local Development Without Docker
 

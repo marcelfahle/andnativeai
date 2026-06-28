@@ -21,8 +21,31 @@ if System.get_env("PHX_SERVER") do
 end
 
 if config_env() == :prod do
+  present? = fn value -> is_binary(value) and String.trim(value) != "" end
+
+  database_url_from_parts = fn ->
+    host = System.get_env("DATABASE_HOST")
+    name = System.get_env("DATABASE_NAME")
+
+    if present?.(host) and present?.(name) do
+      user = System.get_env("DATABASE_USER") || "postgres"
+      password = System.get_env("DATABASE_PASSWORD") || ""
+      port = System.get_env("DATABASE_PORT") || "5432"
+
+      credentials =
+        if present?.(password) do
+          "#{URI.encode_www_form(user)}:#{URI.encode_www_form(password)}"
+        else
+          URI.encode_www_form(user)
+        end
+
+      "ecto://#{credentials}@#{host}:#{port}/#{name}"
+    end
+  end
+
   database_url =
     System.get_env("DATABASE_URL") ||
+      database_url_from_parts.() ||
       raise """
       environment variable DATABASE_URL is missing.
       For example: ecto://USER:PASS@HOST/DATABASE

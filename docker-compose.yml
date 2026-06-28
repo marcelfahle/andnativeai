@@ -1,6 +1,8 @@
 services:
   control-panel:
-    build: .
+    build:
+      context: .
+      target: dev
     command: ./bin/control-panel
     env_file:
       - .env
@@ -33,7 +35,9 @@ services:
         condition: service_started
 
   memory-service:
-    build: .
+    build:
+      context: .
+      target: dev
     command: ./bin/service-placeholder memory-service
     env_file:
       - .env
@@ -53,7 +57,9 @@ services:
         condition: service_healthy
 
   slack-listener:
-    build: .
+    build:
+      context: .
+      target: dev
     command: ./bin/slack-listener
     env_file:
       - .env
@@ -76,7 +82,9 @@ services:
         condition: service_started
 
   openclaw-gateway:
-    build: .
+    build:
+      context: .
+      target: dev
     command: ./bin/service-placeholder openclaw-gateway
     env_file:
       - .env

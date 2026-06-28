@@ -7,6 +7,8 @@ This is a web application written using the Phoenix web framework.
 - After every PR merge, audit `README.md`, `docs/`, and deploy/runbook
   instructions against the merged branch and deployed shape. Patch stale setup,
   Slack, deployment, architecture, or decision docs before moving on.
+- Do not add attribution or provenance lines crediting LLMs, agents, or
+  generated-by tooling in commits, PR text, docs, comments, or release notes.
 
 ### Phoenix v1.8 guidelines
 
