@@ -57,6 +57,19 @@ defmodule AndnativeAi.AccountsTest do
     test "returns nil and does not raise for an unknown email" do
       refute Accounts.get_user_by_email_and_password("nobody@example.com", valid_user_password())
     end
+
+    test "matches the email case-insensitively (citext)" do
+      email = unique_user_email()
+      user_fixture(email: email)
+
+      assert found =
+               Accounts.get_user_by_email_and_password(
+                 String.upcase(email),
+                 valid_user_password()
+               )
+
+      assert found.email == email
+    end
   end
 
   describe "session tokens" do
@@ -73,6 +86,19 @@ defmodule AndnativeAi.AccountsTest do
       token = Accounts.generate_user_session_token(user)
 
       assert :ok = Accounts.delete_user_session_token(token)
+      refute Accounts.get_user_by_session_token(token)
+    end
+
+    test "does not return a user for an expired token" do
+      user = user_fixture()
+      token = Accounts.generate_user_session_token(user)
+
+      {1, _} =
+        Repo.update_all(
+          from(t in AndnativeAi.Accounts.UserToken, where: t.token == ^token),
+          set: [inserted_at: ~U[2020-01-01 00:00:00Z]]
+        )
+
       refute Accounts.get_user_by_session_token(token)
     end
   end

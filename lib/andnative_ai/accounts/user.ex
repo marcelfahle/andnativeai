@@ -5,6 +5,8 @@ defmodule AndnativeAi.Accounts.User do
 
   @derive {Inspect, except: [:password]}
   schema "users" do
+    # Stored as citext in Postgres, so email comparison/uniqueness is
+    # case-insensitive at the database level.
     field :email, :string
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true

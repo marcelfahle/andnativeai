@@ -134,6 +134,15 @@ defmodule AndnativeAiWeb.SlackOAuthControllerTest do
     assert redirected_to(conn) == ~p"/admin/slack"
   end
 
+  test "install requires authentication" do
+    conn =
+      build_conn()
+      |> init_test_session(%{})
+      |> get(~p"/slack/install")
+
+    assert redirected_to(conn) == ~p"/login"
+  end
+
   test "OAuth callback stays reachable without authentication" do
     # Slack calls the callback directly, so it must remain public — an
     # unauthenticated request runs the controller rather than redirecting to login.

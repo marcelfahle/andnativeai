@@ -82,6 +82,26 @@ defmodule AndnativeAiWeb.Layouts do
   end
 
   @doc """
+  Renders a minimal, centered layout for unauthenticated pages such as login.
+
+  Includes the flash group but omits the admin navigation.
+  """
+  attr :flash, :map, required: true, doc: "the map of flash messages"
+  slot :inner_block, required: true
+
+  def auth(assigns) do
+    ~H"""
+    <main class="px-4 py-8 sm:px-6 lg:px-8">
+      <div class="mx-auto w-full max-w-sm">
+        {render_slot(@inner_block)}
+      </div>
+    </main>
+
+    <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc """
   Shows the flash group with standard titles and content.
 
   ## Examples

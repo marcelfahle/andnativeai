@@ -107,4 +107,26 @@ defmodule AndnativeAiWeb.UserAuthTest do
       assert is_nil(socket.assigns.current_user)
     end
   end
+
+  describe "on_mount :require_authenticated" do
+    test "continues with the current user when the session token is valid", %{user: user} do
+      token = Accounts.generate_user_session_token(user)
+      session = %{"user_token" => token}
+
+      assert {:cont, socket} =
+               UserAuth.on_mount(:require_authenticated, %{}, session, %Phoenix.LiveView.Socket{})
+
+      assert socket.assigns.current_user.id == user.id
+    end
+
+    test "halts and redirects to /login when there is no valid token" do
+      socket = %Phoenix.LiveView.Socket{
+        endpoint: AndnativeAiWeb.Endpoint,
+        assigns: %{__changed__: %{}, flash: %{}}
+      }
+
+      assert {:halt, halted} = UserAuth.on_mount(:require_authenticated, %{}, %{}, socket)
+      assert {:redirect, %{to: "/login"}} = halted.redirected
+    end
+  end
 end

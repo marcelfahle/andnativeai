@@ -23,7 +23,7 @@ defmodule AndnativeAiWeb.UserAuth do
   and redirects to the path the user originally requested (if any) or the
   default signed-in path.
   """
-  def log_in_user(conn, user, _params \\ %{}) do
+  def log_in_user(conn, user) do
     token = Accounts.generate_user_session_token(user)
     user_return_to = get_session(conn, :user_return_to)
 

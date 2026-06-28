@@ -6,11 +6,12 @@ defmodule AndnativeAiWeb.UserLoginLiveTest do
 
   describe "login page" do
     test "renders the login form", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/login")
+      {:ok, lv, _html} = live(conn, ~p"/login")
 
-      assert html =~ "Sign in"
-      assert html =~ "Email"
-      assert html =~ "Password"
+      assert has_element?(lv, "h1", "Sign in")
+      assert has_element?(lv, "#login_form")
+      assert has_element?(lv, "input[type=email]")
+      assert has_element?(lv, "input[type=password]")
     end
 
     test "redirects authenticated users away from the login page", %{conn: conn} do
@@ -71,6 +72,28 @@ defmodule AndnativeAiWeb.UserLoginLiveTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Invalid email or password"
       assert redirected_to(conn) == ~p"/login"
     end
+
+    test "returns the generic error for malformed params instead of raising", %{conn: conn} do
+      conn = post(conn, ~p"/login", %{"user" => %{"email" => ["array"], "password" => "x"}})
+      assert redirected_to(conn) == ~p"/login"
+      refute get_session(conn, :user_token)
+
+      conn = post(build_conn(), ~p"/login", %{"unexpected" => "shape"})
+      assert redirected_to(conn) == ~p"/login"
+    end
+  end
+
+  describe "session revocation (R4)" do
+    test "a revoked session token is rejected on the next admin mount", %{conn: conn} do
+      user = user_fixture()
+      token = AndnativeAi.Accounts.generate_user_session_token(user)
+      conn = conn |> init_test_session(%{}) |> put_session(:user_token, token)
+
+      assert {:ok, _lv, _html} = live(conn, ~p"/admin/control-plane")
+
+      AndnativeAi.Accounts.delete_user_session_token(token)
+      assert {:error, {:redirect, %{to: "/login"}}} = live(conn, ~p"/admin/control-plane")
+    end
   end
 
   describe "DELETE /logout" do
@@ -87,7 +110,14 @@ defmodule AndnativeAiWeb.UserLoginLiveTest do
   end
 
   describe "unauthenticated admin access redirects to login (R1)" do
-    for path <- ["/admin/control-plane", "/admin/agents", "/admin/sources", "/admin/slack"] do
+    for path <- [
+          "/admin/control-plane",
+          "/admin/agents",
+          "/admin/sources",
+          "/admin/documents",
+          "/admin/slack",
+          "/admin/runtime"
+        ] do
       test "GET #{path} redirects to /login", %{conn: conn} do
         assert {:error, {:redirect, %{to: "/login"}}} = live(conn, unquote(path))
       end

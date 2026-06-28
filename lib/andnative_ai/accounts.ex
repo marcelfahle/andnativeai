@@ -34,11 +34,6 @@ defmodule AndnativeAi.Accounts do
     if User.valid_password?(user, password), do: user
   end
 
-  @doc """
-  Gets a single user. Raises `Ecto.NoResultsError` if the user does not exist.
-  """
-  def get_user!(id), do: Repo.get!(User, id)
-
   ## User registration
 
   @doc """
@@ -48,13 +43,6 @@ defmodule AndnativeAi.Accounts do
     %User{}
     |> User.registration_changeset(attrs)
     |> Repo.insert()
-  end
-
-  @doc """
-  Returns a changeset for tracking user registration changes (e.g. in a form).
-  """
-  def change_user_registration(%User{} = user, attrs \\ %{}) do
-    User.registration_changeset(user, attrs, hash_password: false, validate_email: false)
   end
 
   ## Session
@@ -74,8 +62,7 @@ defmodule AndnativeAi.Accounts do
   missing, unknown, or expired.
   """
   def get_user_by_session_token(token) do
-    {:ok, query} = UserToken.verify_session_token_query(token)
-    Repo.one(query)
+    Repo.one(UserToken.verify_session_token_query(token))
   end
 
   @doc """
