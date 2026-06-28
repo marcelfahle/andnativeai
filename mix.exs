@@ -88,6 +88,7 @@ defmodule AndnativeAi.MixProject do
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind andnative_ai", "esbuild andnative_ai"],
       "assets.deploy": [
+        "compile",
         "tailwind andnative_ai --minify",
         "esbuild andnative_ai --minify",
         "phx.digest"

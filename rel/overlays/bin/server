@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+cd "$(dirname "$0")/.."
+
+export PHX_SERVER=true
+exec ./bin/andnative_ai start

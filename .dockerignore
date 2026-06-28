@@ -5,7 +5,9 @@
 /tmp
 /var
 /.git
+/.DS_Store
 /.env
+/.claude
 /priv/static/assets
 /priv/static/cache_manifest.json
 erl_crash.dump

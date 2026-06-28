@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+cd "$(dirname "$0")/.."
+
+mkdir -p "${RAW_SOURCES_PATH:-/app/var/sources}" "${OPENCLAW_WORKSPACE_PATH:-/app/var/openclaw}"
+
+./bin/andnative_ai eval "AndnativeAi.Release.create()"
+./bin/andnative_ai eval "AndnativeAi.Release.migrate()"
+./bin/andnative_ai eval "AndnativeAi.Release.seed()"
+
+exec ./bin/server
