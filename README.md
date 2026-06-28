@@ -53,6 +53,9 @@ flows need these values in `.env`:
 
 - `SLACK_BOT_TOKEN`
 - `SLACK_APP_TOKEN`
+- `SLACK_CLIENT_ID`
+- `SLACK_CLIENT_SECRET`
+- `SLACK_REDIRECT_URI`
 - `SLACK_SIGNING_SECRET`
 - `SLACK_BOT_USER_ID`
 - `OPENAI_API_KEY` or a future provider-specific LLM/embedding key

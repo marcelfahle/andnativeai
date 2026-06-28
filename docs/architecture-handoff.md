@@ -21,6 +21,9 @@ tenant is created by `AndnativeAi.Memory.ensure_demo_tenant!/0` with slug
   `document`, `slack_channel`, and `slack_thread`.
 - `memory_items`: distilled/searchable chunks with embedding, provenance,
   visibility, retention class, optional Slack channel id, and soft-delete state.
+- `slack_installations`: OAuth-installed Slack workspaces, keyed by Slack
+  `team_id`, with the workspace bot token and bot user ID used for event
+  routing and response posting.
 
 Search excludes deleted sources and deleted items.
 
@@ -46,12 +49,19 @@ Behavior:
 Path:
 `AndnativeAi.Slack.SocketModeListener` ->
 `AndnativeAi.Slack.SocketModeConnection` ->
+`AndnativeAi.Slack.Installations.resolve_payload/3` ->
 `AndnativeAi.Slack.Ingestion` ->
 `AndnativeAi.Slack.Distiller` ->
 `AndnativeAi.Memory.Service.ingest/6`
 
 Behavior:
 
+- The app-level `SLACK_APP_TOKEN` opens one Socket Mode WebSocket.
+- OAuth installs are stored in `slack_installations`. Incoming Socket Mode
+  payloads are routed by Slack `team_id` to the matching tenant and bot token.
+- If no OAuth install matches, the listener falls back to `.env`
+  `SLACK_BOT_TOKEN` and `SLACK_BOT_USER_ID` for the demo tenant. Set
+  `SLACK_TEAM_ID` to keep that fallback scoped to one workspace.
 - `member_joined_channel` for the bot replaces existing channel memory and
   backfills recent public-channel history.
 - Normal messages in already-joined channels are distilled and appended.
@@ -134,7 +144,8 @@ docker compose config --quiet
 - Slack backfill only sees the most recent `SLACK_HISTORY_LIMIT` messages.
 - Embeddings are deterministic local hashes, not production semantic embeddings.
 - OpenClaw integration is a config/runtime adapter shape, not a full gateway.
-- No production auth, billing, multi-tenant rollout, load testing, or monitoring.
+- Admin auth is Caddy basic auth in the demo deploy, not production app auth.
+- No billing, multi-tenant rollout, load testing, or monitoring.
 
 ## Likely Next Work
 

@@ -3,7 +3,7 @@ defmodule AndnativeAi.Slack.SocketModeConnection do
 
   require Logger
 
-  alias AndnativeAi.Slack.Ingestion
+  alias AndnativeAi.Slack.{Ingestion, Installations}
 
   def start_link(url, state) do
     WebSockex.start_link(url, __MODULE__, state)
@@ -27,8 +27,15 @@ defmodule AndnativeAi.Slack.SocketModeConnection do
   @impl true
   def handle_disconnect(_connection_status, state), do: {:reconnect, state}
 
-  defp handle_envelope(%{"payload" => %{"event" => event}}, state) do
-    Ingestion.handle_event(state.tenant_id, event, state.opts)
+  defp handle_envelope(%{"payload" => %{"event" => event} = payload}, state) do
+    case Installations.resolve_payload(payload, state.fallback_tenant_id, state.opts) do
+      {:ok, tenant_id, opts} ->
+        Ingestion.handle_event(tenant_id, event, opts)
+
+      {:error, reason} ->
+        Logger.warning("Ignoring Slack event without matching installation: #{inspect(reason)}")
+        {:ignored, reason}
+    end
   end
 
   defp handle_envelope(_envelope, _state), do: {:ignored, :unsupported_envelope}

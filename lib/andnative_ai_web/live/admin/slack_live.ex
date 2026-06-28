@@ -2,6 +2,7 @@ defmodule AndnativeAiWeb.Admin.SlackLive do
   use AndnativeAiWeb, :live_view
 
   alias AndnativeAi.Memory
+  alias AndnativeAi.Slack.Installations
 
   @impl true
   def mount(_params, _session, socket) do
@@ -12,23 +13,33 @@ defmodule AndnativeAiWeb.Admin.SlackLive do
       |> Memory.list_sources()
       |> Enum.filter(&(&1.source_type == "slack_channel"))
 
+    installations = Installations.list_installations(tenant.id)
+
     {:ok,
      socket
      |> assign(:page_title, "Slack")
      |> assign(:tenant, tenant)
      |> assign(:slack_sources, slack_sources)
-     |> assign(:connection_status, connection_status())}
+     |> assign(:installations, installations)
+     |> assign(:connection_status, connection_status(installations))
+     |> assign(:oauth_configured?, Installations.oauth_configured?())}
   end
 
-  defp connection_status do
-    app = System.get_env("SLACK_APP_TOKEN", "")
-    bot = System.get_env("SLACK_BOT_TOKEN", "")
-    user = System.get_env("SLACK_BOT_USER_ID", "")
+  defp connection_status(installations) do
+    cond do
+      installations != [] ->
+        "oauth installed"
 
-    if configured?(app) and configured?(bot) and user != "", do: "configured", else: "disabled"
+      Installations.configured_app_token?() and Installations.env_fallback_configured?() ->
+        "env configured"
+
+      Installations.configured_app_token?() ->
+        "socket only"
+
+      true ->
+        "disabled"
+    end
   end
-
-  defp configured?(value), do: value != "" and not String.contains?(value, "replace-me")
 
   @impl true
   def render(assigns) do
@@ -52,8 +63,59 @@ defmodule AndnativeAiWeb.Admin.SlackLive do
             <p class="mt-2 text-xl font-semibold">{length(@slack_sources)}</p>
           </div>
           <div class="rounded-lg border border-base-300 bg-base-100 p-5">
-            <p class="text-sm text-base-content/60">Scope</p>
-            <p class="mt-2 text-xl font-semibold">Public</p>
+            <p class="text-sm text-base-content/60">Workspaces</p>
+            <p class="mt-2 text-xl font-semibold">{length(@installations)}</p>
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-base-300 bg-base-100 p-5">
+          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 class="text-base font-semibold">Workspace connection</h2>
+              <p class="mt-1 text-sm text-base-content/60">
+                OAuth installs store the workspace bot token for Socket Mode event routing.
+              </p>
+            </div>
+            <.link
+              href={~p"/slack/install"}
+              class={[
+                "btn btn-primary",
+                !@oauth_configured? && "btn-disabled"
+              ]}
+            >
+              <.icon name="hero-arrow-top-right-on-square" class="size-4" /> Connect Slack
+            </.link>
+          </div>
+          <p :if={!@oauth_configured?} class="mt-3 text-sm text-error">
+            Set SLACK_CLIENT_ID and SLACK_CLIENT_SECRET to enable OAuth installs.
+          </p>
+        </section>
+
+        <section class="rounded-lg border border-base-300 bg-base-100">
+          <div class="border-b border-base-300 px-5 py-4">
+            <h2 class="text-base font-semibold">Installed workspaces</h2>
+          </div>
+          <div id="slack-installations" class="divide-y divide-base-300">
+            <div
+              :if={@installations == []}
+              id="slack-installations-empty"
+              class="px-5 py-10 text-sm text-base-content/60"
+            >
+              No OAuth workspace installs.
+            </div>
+            <div
+              :for={installation <- @installations}
+              id={"slack-installation-#{installation.id}"}
+              class="px-5 py-4"
+            >
+              <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p class="font-medium">{installation.team_name}</p>
+                  <p class="mt-1 text-xs text-base-content/60">{installation.team_id}</p>
+                </div>
+                <span class="badge badge-outline">{installation.status}</span>
+              </div>
+            </div>
           </div>
         </section>
 

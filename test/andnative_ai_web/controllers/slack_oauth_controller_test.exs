@@ -1,0 +1,123 @@
+defmodule AndnativeAiWeb.SlackOAuthControllerTest do
+  use AndnativeAiWeb.ConnCase, async: false
+
+  alias AndnativeAi.Memory
+  alias AndnativeAi.Slack.Installations
+
+  setup do
+    env_keys = ~w(SLACK_CLIENT_ID SLACK_CLIENT_SECRET SLACK_REDIRECT_URI SLACK_BOT_SCOPES)
+    previous_env = Map.new(env_keys, &{&1, System.get_env(&1)})
+    previous_client = Application.get_env(:andnative_ai, :slack_client)
+
+    System.put_env("SLACK_CLIENT_ID", "123.abc")
+    System.put_env("SLACK_CLIENT_SECRET", "secret")
+    System.put_env("SLACK_REDIRECT_URI", "https://app.example.com/slack/oauth/callback")
+    System.put_env("SLACK_BOT_SCOPES", "app_mentions:read,channels:history,chat:write")
+    Application.put_env(:andnative_ai, :slack_client, __MODULE__.FakeOAuthClient)
+
+    on_exit(fn ->
+      Enum.each(previous_env, fn
+        {key, nil} -> System.delete_env(key)
+        {key, value} -> System.put_env(key, value)
+      end)
+
+      if previous_client do
+        Application.put_env(:andnative_ai, :slack_client, previous_client)
+      else
+        Application.delete_env(:andnative_ai, :slack_client)
+      end
+    end)
+
+    :ok
+  end
+
+  test "install redirects to Slack OAuth with state and configured scopes", %{conn: conn} do
+    conn =
+      conn
+      |> init_test_session(%{})
+      |> get(~p"/slack/install")
+
+    assert redirected_to(conn) =~ "https://slack.com/oauth/v2/authorize?"
+
+    state = get_session(conn, :slack_oauth_state)
+    assert is_binary(state)
+
+    uri = URI.parse(redirected_to(conn))
+    query = URI.decode_query(uri.query)
+
+    assert query["client_id"] == "123.abc"
+    assert query["scope"] == "app_mentions:read,channels:history,chat:write"
+    assert query["redirect_uri"] == "https://app.example.com/slack/oauth/callback"
+    assert query["state"] == state
+  end
+
+  test "callback exchanges the code and stores the Slack install", %{conn: conn} do
+    conn =
+      conn
+      |> init_test_session(%{})
+      |> get(~p"/slack/install")
+
+    state = get_session(conn, :slack_oauth_state)
+
+    conn =
+      get(conn, ~p"/slack/oauth/callback", %{
+        "code" => "valid-code",
+        "state" => state
+      })
+
+    assert redirected_to(conn) == ~p"/admin/slack"
+
+    tenant = Memory.ensure_demo_tenant!()
+    installation = Installations.latest_installation(tenant.id)
+
+    assert installation.team_id == "T123"
+    assert installation.team_name == "Acme"
+    assert installation.bot_token == "xoxb-oauth"
+    assert installation.bot_user_id == "UBOT"
+  end
+
+  test "callback rejects mismatched state", %{conn: conn} do
+    conn =
+      conn
+      |> init_test_session(%{slack_oauth_state: "expected"})
+      |> get(~p"/slack/oauth/callback", %{
+        "code" => "valid-code",
+        "state" => "wrong"
+      })
+
+    assert redirected_to(conn) == ~p"/admin/slack"
+
+    tenant = Memory.ensure_demo_tenant!()
+    assert Installations.latest_installation(tenant.id) == nil
+  end
+
+  test "install reports missing OAuth config", %{conn: conn} do
+    System.delete_env("SLACK_CLIENT_SECRET")
+
+    conn =
+      conn
+      |> init_test_session(%{})
+      |> get(~p"/slack/install")
+
+    assert redirected_to(conn) == ~p"/admin/slack"
+  end
+
+  defmodule FakeOAuthClient do
+    def oauth_v2_access(
+          "123.abc",
+          "secret",
+          "valid-code",
+          "https://app.example.com/slack/oauth/callback"
+        ) do
+      {:ok,
+       %{
+         "access_token" => "xoxb-oauth",
+         "scope" => "app_mentions:read,channels:history,chat:write",
+         "bot_user_id" => "UBOT",
+         "app_id" => "A123",
+         "team" => %{"id" => "T123", "name" => "Acme"},
+         "authed_user" => %{"id" => "UINSTALLER"}
+       }}
+    end
+  end
+end

@@ -24,9 +24,7 @@ defmodule AndnativeAi.Slack.SocketModeListener do
     if configured?(state) do
       send(self(), :connect)
     else
-      Logger.warning(
-        "Slack Socket Mode listener disabled; set SLACK_APP_TOKEN, SLACK_BOT_TOKEN, and SLACK_BOT_USER_ID."
-      )
+      Logger.warning("Slack Socket Mode listener disabled; set SLACK_APP_TOKEN.")
     end
 
     {:ok, state}
@@ -42,11 +40,12 @@ defmodule AndnativeAi.Slack.SocketModeListener do
           client: state.client,
           bot_token: state.bot_token,
           bot_user_id: state.bot_user_id,
+          team_id: System.get_env("SLACK_TEAM_ID", ""),
           history_limit: state.history_limit
         ]
 
         {:ok, connection} =
-          SocketModeConnection.start_link(url, %{tenant_id: tenant.id, opts: opts})
+          SocketModeConnection.start_link(url, %{fallback_tenant_id: tenant.id, opts: opts})
 
         {:noreply, %{state | connection: connection}}
 
@@ -58,7 +57,7 @@ defmodule AndnativeAi.Slack.SocketModeListener do
   end
 
   defp configured?(state) do
-    valid_secret?(state.app_token) and valid_secret?(state.bot_token) and state.bot_user_id != ""
+    valid_secret?(state.app_token)
   end
 
   defp valid_secret?(value), do: value != "" and not String.contains?(value, "replace-me")

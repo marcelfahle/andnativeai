@@ -121,3 +121,22 @@ Why:
 
 - Public channel scopes are enough for the one-week proof.
 - Private scopes and governance policy need a more deliberate product decision.
+
+## DEC-011: Slack OAuth Stores Workspace Bot Tokens
+
+Socket Mode still uses one app-level `SLACK_APP_TOKEN`, but workspace bot tokens
+come from OAuth installs stored in `slack_installations`.
+
+Why:
+
+- A customer should connect Slack from the admin UI instead of pasting `xoxb`
+  tokens into server env.
+- Socket Mode payloads include Slack workspace identity, so routing by
+  `team_id` keeps ingestion tenant-aware without changing the ingest contract.
+- The existing `.env` token path remains useful as a demo fallback while OAuth
+  onboarding matures.
+
+Current caveat:
+
+- Bot tokens are plaintext in Postgres for the PoC. Production needs encrypted
+  secret storage and uninstall/revocation handling.

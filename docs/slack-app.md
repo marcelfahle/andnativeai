@@ -20,6 +20,8 @@ features:
     display_name: andnative-ai
     always_online: false
 oauth_config:
+  redirect_urls:
+    - http://localhost:4000/slack/oauth/callback
   scopes:
     bot:
       - app_mentions:read
@@ -39,9 +41,10 @@ settings:
 ```
 
 6. Open **OAuth & Permissions**.
-7. Click **Install to Workspace** or **Reinstall to Workspace**.
-8. Copy the **Bot User OAuth Token**. It starts with `xoxb-`.
-9. Open **Basic Information**.
+7. Add the deployed callback URL if you are testing the Hetzner demo:
+   `https://andnativeai.marcelfahle.net/slack/oauth/callback`.
+8. Open **Basic Information**.
+9. Copy the **Client ID** and **Client Secret** for OAuth installs.
 10. Under **App-Level Tokens**, create a token with the `connections:write`
     scope. Copy it. It starts with `xapp-`.
 
@@ -67,6 +70,18 @@ Go to **OAuth & Permissions** and add these **Bot Token Scopes**:
 - `chat:write`: post answers back to Slack.
 
 Private-channel scopes are intentionally deferred for the one-week PoC.
+
+Add this **Redirect URL** under **OAuth & Permissions**:
+
+```text
+http://localhost:4000/slack/oauth/callback
+```
+
+For the Hetzner demo, also add:
+
+```text
+https://andnativeai.marcelfahle.net/slack/oauth/callback
+```
 
 ### 3. Enable Socket Mode
 
@@ -103,11 +118,14 @@ The PoC uses these as follows:
 ### 5. Install Or Reinstall
 
 Go back to **OAuth & Permissions** and install the app to the workspace. If you
-changed scopes or events after installing, click **Reinstall to Workspace**.
+changed scopes, redirect URLs, or events after installing, click
+**Reinstall to Workspace**.
 
 Copy the **Bot User OAuth Token**. It starts with `xoxb-`.
 
-This token is `SLACK_BOT_TOKEN`.
+This token is the manual `.env` fallback `SLACK_BOT_TOKEN`. The preferred
+demo flow is now `/admin/slack` -> **Connect Slack**, which exchanges the OAuth
+code and stores the workspace bot token in Postgres.
 
 ## Environment Variables
 
@@ -119,10 +137,19 @@ SLACK_APP_TOKEN=xapp-replace-me
 SLACK_BOT_TOKEN=xoxb-replace-me
 SLACK_BOT_USER_ID=U_REPLACE_ME
 SLACK_HISTORY_LIMIT=50
+SLACK_CLIENT_ID=123.456
+SLACK_CLIENT_SECRET=replace-me
+SLACK_REDIRECT_URI=http://localhost:4000/slack/oauth/callback
+SLACK_BOT_SCOPES=app_mentions:read,channels:history,channels:read,chat:write
 ```
 
 `SLACK_SIGNING_SECRET` is present in `.env.example` for future HTTP endpoint
 support, but the current Socket Mode listener does not use it.
+
+`SLACK_APP_TOKEN` remains required because Socket Mode uses the app-level
+`xapp-` token to open the WebSocket. `SLACK_BOT_TOKEN` and
+`SLACK_BOT_USER_ID` are kept as a local/manual fallback. OAuth installs store
+the active workspace bot token and bot user ID in `slack_installations`.
 
 To get `SLACK_BOT_USER_ID`, run:
 
@@ -153,6 +180,23 @@ channel:
 
 The invite triggers a public-channel backfill. New channel messages are only
 ingested after the bot has joined the channel.
+
+## OAuth Install Flow
+
+1. Ensure `.env` has `SLACK_APP_TOKEN`, `SLACK_CLIENT_ID`,
+   `SLACK_CLIENT_SECRET`, and `SLACK_REDIRECT_URI`.
+2. Start `control-panel` and `slack-listener`.
+3. Open `/admin/slack`.
+4. Click **Connect Slack**.
+5. Approve the app in Slack.
+6. Confirm `/admin/slack` shows the installed workspace.
+
+Socket Mode receives events for the Slack app. The listener extracts the event
+`team_id`, loads the matching `slack_installations` row, and passes that
+workspace's bot token into ingestion and response posting. If no install
+matches, the old `.env` fallback is used only when `SLACK_BOT_TOKEN` and
+`SLACK_BOT_USER_ID` are configured. Set `SLACK_TEAM_ID` to prevent fallback
+events from other workspaces.
 
 ## How Slack Memory Refresh Works
 
@@ -202,9 +246,12 @@ docker compose exec -T control-panel mix run scripts/reset-demo-memory.exs
 
 ## Troubleshooting
 
-- `Slack Socket Mode listener disabled`: `.env` is missing
-  `SLACK_APP_TOKEN`, `SLACK_BOT_TOKEN`, or `SLACK_BOT_USER_ID`, or one still
-  contains `replace-me`.
+- `Slack Socket Mode listener disabled`: `.env` is missing `SLACK_APP_TOKEN`
+  or it still contains `replace-me`.
+- **Connect Slack** is disabled: `.env` is missing `SLACK_CLIENT_ID` or
+  `SLACK_CLIENT_SECRET`.
+- OAuth returns `bad_redirect_uri`: add the exact `SLACK_REDIRECT_URI` value in
+  the Slack app's **OAuth & Permissions** redirect URLs.
 - `invalid_auth` from Slack: confirm you used the `xapp-` token for
   `SLACK_APP_TOKEN` and the `xoxb-` token for `SLACK_BOT_TOKEN`.
 - Bot does not answer mentions: reinstall the app after adding

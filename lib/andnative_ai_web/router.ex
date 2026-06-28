@@ -18,6 +18,8 @@ defmodule AndnativeAiWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/slack/install", SlackOAuthController, :install
+    get "/slack/oauth/callback", SlackOAuthController, :callback
     live "/admin/agents", Admin.AgentsLive
     live "/admin/sources", Admin.DocumentsLive
     live "/admin/documents", Admin.DocumentsLive

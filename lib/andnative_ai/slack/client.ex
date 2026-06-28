@@ -40,6 +40,18 @@ defmodule AndnativeAi.Slack.Client do
     })
   end
 
+  def oauth_v2_access(client_id, client_secret, code, redirect_uri) do
+    params =
+      %{
+        client_id: client_id,
+        client_secret: client_secret,
+        code: code
+      }
+      |> maybe_put_redirect_uri(redirect_uri)
+
+    request(:post, "/oauth.v2.access", nil, form: params)
+  end
+
   def fallback_permalink(channel_id, message_ts),
     do: "slack://channel/#{channel_id}/#{message_ts}"
 
@@ -52,7 +64,8 @@ defmodule AndnativeAi.Slack.Client do
   end
 
   defp request(method, path, token, opts) do
-    [method: method, url: @api <> path, auth: {:bearer, token}]
+    [method: method, url: @api <> path]
+    |> maybe_put_bearer_auth(token)
     |> Keyword.merge(opts)
     |> Req.request()
     |> case do
@@ -61,4 +74,13 @@ defmodule AndnativeAi.Slack.Client do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  defp maybe_put_redirect_uri(params, ""), do: params
+  defp maybe_put_redirect_uri(params, nil), do: params
+
+  defp maybe_put_redirect_uri(params, redirect_uri),
+    do: Map.put(params, :redirect_uri, redirect_uri)
+
+  defp maybe_put_bearer_auth(opts, token) when token in [nil, ""], do: opts
+  defp maybe_put_bearer_auth(opts, token), do: Keyword.put(opts, :auth, {:bearer, token})
 end
