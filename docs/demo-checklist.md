@@ -18,6 +18,16 @@ docker compose exec -T control-panel mix run scripts/reset-demo-memory.exs
 This keeps agents and config, but removes memory sources and memory items for
 the demo tenant.
 
+If the bot is already in the Slack channel, post the demo decision and backfill
+that existing channel manually:
+
+```sh
+docker compose exec -T control-panel mix run scripts/backfill-slack-channel.exs C0123456789
+```
+
+Use the channel ID from the Slack channel URL. It is the `C...` value in a URL
+like `/archives/C0123456789`.
+
 ## Setup
 
 - Create an OpenClaw agent in Agents.
