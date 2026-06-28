@@ -168,6 +168,12 @@ store every Slack message as a separate row.
 - Removing the bot from the channel soft-deletes that channel source and hides
   its memory from search.
 
+Slack app posts, including Linear issue notifications, are a current limitation.
+They often arrive as bot/app subtype messages with useful content inside
+`blocks` or `attachments`. The PoC currently focuses on human channel messages
+with plain `text`, so these notifications may not be distilled into memory.
+See `docs/architecture-handoff.md` and `docs/decisions.md` before changing this.
+
 For a clean recorded demo, run:
 
 ```sh

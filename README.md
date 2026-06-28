@@ -66,3 +66,9 @@ See `docs/slack-app.md` for the Socket Mode app setup.
 - `docs/demo-checklist.md` has the repeatable end-to-end script.
 - `docs/slack-smoke-test.md` has the manual Slack verification.
 - `scripts/compose-persistence-check.sh` verifies memory survives a Compose restart.
+
+## Development Handoff
+
+- `docs/architecture-handoff.md` explains the current system shape, flows,
+  limitations, and verification commands.
+- `docs/decisions.md` records durable product and implementation decisions.
