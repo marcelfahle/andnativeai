@@ -54,12 +54,16 @@ Server setup:
 
   ```sh
   SECRET_KEY_BASE=<generated with mix phx.gen.secret>
+  POSTGRES_PASSWORD=<generated with openssl rand -hex 32>
+  MINIO_ROOT_PASSWORD=<generated with openssl rand -hex 32>
   RESEND_API_KEY=re_...                         # optional until email is needed
   MAILER_FROM=no-reply@andnativeai.marcelfahle.net
   ```
 
-`SECRET_KEY_BASE` is required. Without it the release fails fast instead of
-falling back to the committed dev secret.
+`SECRET_KEY_BASE`, `POSTGRES_PASSWORD`, and `MINIO_ROOT_PASSWORD` are required
+for production deploys. The deploy workflow rejects missing, placeholder, or
+short values before rebuilding the stack. Keep the generated Postgres and MinIO
+passwords alphanumeric; `openssl rand -hex 32` satisfies that requirement.
 
 Manual workflow dispatch:
 
@@ -88,7 +92,7 @@ On the server:
 
 ```sh
 cd /opt/andnativeai/deploy
-docker compose -p andnativeai -f hetzner-demo.compose.yml up -d --build
+docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml up -d --build
 ```
 
 ## Production Runtime
@@ -101,17 +105,33 @@ The Hetzner stack runs an OTP release from the Docker `release` target:
 - `slack-listener` runs `/app/bin/slack-listener` with
   `SERVICE_ROLE=slack-listener`. It uses the same release image but does not
   start the HTTP server.
-- The release reads `DATABASE_URL`, `SECRET_KEY_BASE`, `PHX_HOST`, `PORT`,
-  Slack credentials, OpenAI credentials, and mailer credentials from env.
+- The release reads database connection parts, `SECRET_KEY_BASE`, `PHX_HOST`,
+  `PORT`, Slack credentials, OpenAI credentials, and mailer credentials from
+  env.
 - Production services do **not** bind-mount the repo, `deps`, or `_build` into
   `/app`.
+- Production Compose commands must include `--env-file ../.env` so Compose can
+  interpolate server-only secrets without committing them.
 
 Useful release commands:
 
 ```sh
 cd /opt/andnativeai/deploy
-docker compose -p andnativeai -f hetzner-demo.compose.yml exec control-panel ./bin/migrate
-docker compose -p andnativeai -f hetzner-demo.compose.yml exec control-panel ./bin/andnative_ai eval "AndnativeAi.Release.seed()"
+docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml exec control-panel ./bin/migrate
+docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml exec control-panel ./bin/andnative_ai eval "AndnativeAi.Release.seed()"
+```
+
+Rotate the Postgres role password after changing `POSTGRES_PASSWORD`:
+
+```sh
+cd /opt/andnativeai/deploy
+set -a
+. ../.env
+set +a
+docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml up -d postgres
+docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml exec -T \
+  -e NEW_POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  postgres sh -lc 'psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER USER postgres WITH PASSWORD '\''$NEW_POSTGRES_PASSWORD'\'';"'
 ```
 
 ### One-time database preservation
@@ -122,8 +142,8 @@ existing host, copy the old database once if it contains data you want to keep:
 
 ```sh
 cd /opt/andnativeai/deploy
-docker compose -p andnativeai -f hetzner-demo.compose.yml up -d postgres
-docker compose -p andnativeai -f hetzner-demo.compose.yml exec postgres sh -lc \
+docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml up -d postgres
+docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml exec postgres sh -lc \
   'if psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = '\''andnative_ai_prod'\''" | grep -q 1; then
      echo "andnative_ai_prod already exists; inspect it before copying"
    else
