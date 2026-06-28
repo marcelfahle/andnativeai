@@ -53,6 +53,18 @@ defmodule AndnativeAi.Accounts.UserToken do
   end
 
   @doc """
+  Returns a query for all of a user's tokens, optionally filtered to specific
+  contexts. Used to invalidate sessions and email tokens on password change.
+  """
+  def by_user_and_contexts_query(user, :all) do
+    from t in UserToken, where: t.user_id == ^user.id
+  end
+
+  def by_user_and_contexts_query(user, [_ | _] = contexts) do
+    from t in UserToken, where: t.user_id == ^user.id and t.context in ^contexts
+  end
+
+  @doc """
   Builds a hashed email token for the given context ("reset_password" or
   "invite"). Returns the raw, URL-safe token to email and the `UserToken`
   struct (carrying the hash) to persist.
