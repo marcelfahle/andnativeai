@@ -10,7 +10,7 @@ defmodule AndnativeAi.Accounts do
   import Ecto.Query, warn: false
 
   alias AndnativeAi.Repo
-  alias AndnativeAi.Accounts.{User, UserToken}
+  alias AndnativeAi.Accounts.{User, UserNotifier, UserToken}
 
   ## Database getters
 
@@ -40,8 +40,13 @@ defmodule AndnativeAi.Accounts do
   Registers a user from the given attributes (`:email`, `:password`).
   """
   def register_user(attrs) do
+    now = DateTime.truncate(DateTime.utc_now(), :second)
+
+    # Directly-registered users (seeds, env provisioning) are active immediately;
+    # only invite stubs stay unconfirmed until accepted.
     %User{}
     |> User.registration_changeset(attrs)
+    |> Ecto.Changeset.put_change(:confirmed_at, now)
     |> Repo.insert()
   end
 
@@ -71,5 +76,163 @@ defmodule AndnativeAi.Accounts do
   def delete_user_session_token(token) do
     Repo.delete_all(UserToken.by_token_and_context_query(token, "session"))
     :ok
+  end
+
+  ## Passwords
+
+  @doc """
+  Changes a user's password after verifying the current one, and invalidates the
+  user's other sessions in the same transaction.
+  """
+  def update_user_password(user, current_password, attrs) do
+    changeset =
+      user
+      |> User.password_changeset(attrs)
+      |> User.validate_current_password(current_password)
+
+    update_password_multi(user, changeset, ["session"])
+  end
+
+  @doc """
+  Returns a changeset for tracking password changes in a form. Does not hash, so
+  the plaintext is retained for the form (and the settings re-login).
+  """
+  def change_user_password(user, attrs \\ %{}) do
+    User.password_changeset(user, attrs, hash_password: false)
+  end
+
+  ## Reset password
+
+  @doc """
+  Delivers reset-password instructions for the given user. The caller must not
+  reveal whether an email exists (no enumeration).
+  """
+  def deliver_user_reset_password_instructions(%User{} = user, reset_password_url_fun)
+      when is_function(reset_password_url_fun, 1) do
+    {encoded_token, user_token} = UserToken.build_email_token(user, "reset_password")
+    Repo.insert!(user_token)
+    UserNotifier.deliver_reset_password_instructions(user, reset_password_url_fun.(encoded_token))
+  end
+
+  @doc """
+  Gets the user for a valid reset-password token, or `nil`.
+  """
+  def get_user_by_reset_password_token(token) do
+    get_user_by_email_token(token, "reset_password")
+  end
+
+  @doc """
+  Resets the user's password and invalidates the user's reset and session tokens.
+  """
+  def reset_user_password(user, attrs) do
+    update_password_multi(
+      user,
+      User.password_changeset(user, attrs),
+      ["reset_password", "session"]
+    )
+  end
+
+  ## Invitations
+
+  @doc """
+  Invites a new user by email: creates the user with a random (unguessable)
+  password and an unset `confirmed_at`, then emails an activation link. The
+  invitee sets their real password via `accept_invitation/2`.
+  """
+  def invite_user(email, invite_url_fun) when is_function(invite_url_fun, 1) do
+    random_password = Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
+
+    # Insert directly (not register_user) so the invite stub stays unconfirmed
+    # (confirmed_at: nil) until the invitee accepts.
+    changeset = User.registration_changeset(%User{}, %{email: email, password: random_password})
+
+    case Repo.insert(changeset) do
+      {:ok, user} ->
+        {encoded_token, user_token} = UserToken.build_email_token(user, "invite")
+        Repo.insert!(user_token)
+
+        case UserNotifier.deliver_invitation(user, invite_url_fun.(encoded_token)) do
+          {:ok, _email} ->
+            {:ok, user}
+
+          {:error, reason} ->
+            # A transient mail failure must not leave an orphaned account; delete
+            # the stub (cascades to its tokens) and report the failure.
+            Repo.delete(user)
+            {:error, reason}
+        end
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  @doc """
+  Gets the user for a valid invite token, or `nil`.
+  """
+  def get_user_by_invite_token(token) do
+    get_user_by_email_token(token, "invite")
+  end
+
+  @doc """
+  Accepts an invitation: sets the invitee's chosen password, stamps
+  `confirmed_at`, and clears the user's invite and session tokens.
+  """
+  def accept_invitation(user, attrs) do
+    now = DateTime.truncate(DateTime.utc_now(), :second)
+
+    changeset =
+      user
+      |> User.password_changeset(attrs)
+      |> Ecto.Changeset.put_change(:confirmed_at, now)
+
+    update_password_multi(user, changeset, ["invite", "session"])
+  end
+
+  ## User administration
+
+  @doc """
+  Deletes a user, refusing to remove the final remaining user so the system can
+  never be locked out.
+  """
+  # An unconfirmed invite stub can always be removed — it can never be the last
+  # loginable admin.
+  def delete_user(%User{confirmed_at: nil} = user) do
+    Repo.delete(user)
+  end
+
+  def delete_user(%User{} = user) do
+    active_count = Repo.aggregate(from(u in User, where: not is_nil(u.confirmed_at)), :count)
+
+    if active_count <= 1 do
+      {:error, :last_user}
+    else
+      Repo.delete(user)
+    end
+  end
+
+  ## Internal helpers
+
+  defp get_user_by_email_token(token, context) do
+    with {:ok, query} <- UserToken.verify_email_token_query(token, context),
+         %User{} = user <- Repo.one(query) do
+      user
+    else
+      _ -> nil
+    end
+  end
+
+  defp update_password_multi(user, changeset, token_contexts) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.update(:user, changeset)
+    |> Ecto.Multi.delete_all(
+      :tokens,
+      UserToken.by_user_and_contexts_query(user, token_contexts)
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{user: user}} -> {:ok, user}
+      {:error, :user, changeset, _} -> {:error, changeset}
+    end
   end
 end

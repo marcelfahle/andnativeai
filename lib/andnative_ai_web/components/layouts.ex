@@ -63,6 +63,12 @@ defmodule AndnativeAiWeb.Layouts do
           <.theme_toggle />
           <div :if={@current_user} class="flex items-center gap-2 pl-2">
             <span class="hidden text-xs text-base-content/60 sm:inline">{@current_user.email}</span>
+            <.link navigate={~p"/admin/users/invite"} class="btn btn-ghost btn-sm">
+              <.icon name="hero-user-plus" class="size-4" /> Invite
+            </.link>
+            <.link navigate={~p"/users/settings"} class="btn btn-ghost btn-sm">
+              <.icon name="hero-cog-6-tooth" class="size-4" /> Settings
+            </.link>
             <.link href={~p"/logout"} method="delete" class="btn btn-ghost btn-sm">
               <.icon name="hero-arrow-right-on-rectangle" class="size-4" /> Log out
             </.link>

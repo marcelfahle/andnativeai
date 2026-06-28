@@ -34,6 +34,13 @@ defmodule AndnativeAiWeb.Router do
       on_mount: [{AndnativeAiWeb.UserAuth, :redirect_if_user_is_authenticated}] do
       live "/login", UserLoginLive
     end
+
+    live_session :public_account,
+      on_mount: [{AndnativeAiWeb.UserAuth, :mount_current_user}] do
+      live "/users/reset-password", UserForgotPasswordLive
+      live "/users/reset-password/:token", UserResetPasswordLive
+      live "/users/invite/:token", UserAcceptInvitationLive
+    end
   end
 
   ## Authenticated admin routes
@@ -52,6 +59,9 @@ defmodule AndnativeAiWeb.Router do
       live "/admin/documents", Admin.DocumentsLive
       live "/admin/slack", Admin.SlackLive
       live "/admin/runtime", Admin.RuntimeLive
+
+      live "/users/settings", UserSettingsLive
+      live "/admin/users/invite", Admin.UserInviteLive
     end
   end
 

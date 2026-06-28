@@ -9,6 +9,7 @@ defmodule AndnativeAi.Accounts.User do
     # case-insensitive at the database level.
     field :email, :string
     field :password, :string, virtual: true, redact: true
+    field :current_password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
     field :confirmed_at, :utc_datetime
 
@@ -71,6 +72,30 @@ defmodule AndnativeAi.Accounts.User do
       |> delete_change(:password)
     else
       changeset
+    end
+  end
+
+  @doc """
+  A changeset for changing the password (used by settings, reset, and invite
+  acceptance). Validates and hashes the new password; does not touch the email.
+  """
+  def password_changeset(user, attrs, opts \\ []) do
+    user
+    |> cast(attrs, [:password])
+    |> validate_password(opts)
+  end
+
+  @doc """
+  Validates the current password — adds an error to `:current_password` when it
+  does not match the user's stored password.
+  """
+  def validate_current_password(changeset, password) do
+    changeset = cast(changeset, %{current_password: password}, [:current_password])
+
+    if valid_password?(changeset.data, password) do
+      changeset
+    else
+      add_error(changeset, :current_password, "is not valid")
     end
   end
 

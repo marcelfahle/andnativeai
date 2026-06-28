@@ -102,4 +102,174 @@ defmodule AndnativeAi.AccountsTest do
       refute Accounts.get_user_by_session_token(token)
     end
   end
+
+  describe "update_user_password/3" do
+    setup do
+      %{user: user_fixture()}
+    end
+
+    test "updates the password with the correct current password", %{user: user} do
+      {:ok, updated} =
+        Accounts.update_user_password(user, valid_user_password(), %{
+          password: "a new valid password"
+        })
+
+      assert Accounts.get_user_by_email_and_password(user.email, "a new valid password")
+      assert is_nil(updated.password)
+    end
+
+    test "rejects a wrong current password", %{user: user} do
+      {:error, changeset} =
+        Accounts.update_user_password(user, "wrong wrong wrong", %{
+          password: "a new valid password"
+        })
+
+      assert %{current_password: ["is not valid"]} = errors_on(changeset)
+      assert Accounts.get_user_by_email_and_password(user.email, valid_user_password())
+    end
+
+    test "validates the new password", %{user: user} do
+      {:error, changeset} =
+        Accounts.update_user_password(user, valid_user_password(), %{password: "short"})
+
+      assert "should be at least 12 character(s)" in errors_on(changeset).password
+    end
+
+    test "invalidates the user's other sessions", %{user: user} do
+      token = Accounts.generate_user_session_token(user)
+
+      {:ok, _} =
+        Accounts.update_user_password(user, valid_user_password(), %{
+          password: "a new valid password"
+        })
+
+      refute Accounts.get_user_by_session_token(token)
+    end
+  end
+
+  describe "reset password" do
+    setup do
+      %{user: user_fixture()}
+    end
+
+    test "deliver_user_reset_password_instructions emails a usable token", %{user: user} do
+      token =
+        extract_user_token(fn url ->
+          Accounts.deliver_user_reset_password_instructions(user, url)
+        end)
+
+      assert Accounts.get_user_by_reset_password_token(token).id == user.id
+    end
+
+    test "get_user_by_reset_password_token returns nil for an invalid token" do
+      refute Accounts.get_user_by_reset_password_token("oops")
+    end
+
+    test "reset_user_password sets the password and clears reset + session tokens", %{user: user} do
+      session = Accounts.generate_user_session_token(user)
+
+      reset_token =
+        extract_user_token(fn url ->
+          Accounts.deliver_user_reset_password_instructions(user, url)
+        end)
+
+      {:ok, _} = Accounts.reset_user_password(user, %{password: "a brand new password"})
+
+      assert Accounts.get_user_by_email_and_password(user.email, "a brand new password")
+      refute Accounts.get_user_by_session_token(session)
+      refute Accounts.get_user_by_reset_password_token(reset_token)
+    end
+  end
+
+  describe "invitations" do
+    test "invite_user creates an un-loginable, unconfirmed user and emails a token" do
+      email = unique_user_email()
+
+      token =
+        extract_user_token(fn url ->
+          {:ok, _user} = Accounts.invite_user(email, url)
+        end)
+
+      user = Accounts.get_user_by_email(email)
+      assert user
+      assert is_nil(user.confirmed_at)
+      refute Accounts.get_user_by_email_and_password(email, valid_user_password())
+      assert Accounts.get_user_by_invite_token(token).id == user.id
+    end
+
+    test "invite_user rejects a duplicate email" do
+      %{email: email} = user_fixture()
+      assert {:error, changeset} = Accounts.invite_user(email, fn _ -> "https://example.com" end)
+      assert "has already been taken" in errors_on(changeset).email
+    end
+
+    test "accept_invitation sets the password, stamps confirmed_at, and clears the token" do
+      email = unique_user_email()
+
+      token =
+        extract_user_token(fn url ->
+          {:ok, _user} = Accounts.invite_user(email, url)
+        end)
+
+      user = Accounts.get_user_by_invite_token(token)
+
+      {:ok, accepted} = Accounts.accept_invitation(user, %{password: "the chosen password"})
+
+      assert accepted.confirmed_at
+      assert Accounts.get_user_by_email_and_password(email, "the chosen password")
+      refute Accounts.get_user_by_invite_token(token)
+    end
+
+    test "tokens are context-isolated (a reset token is not an invite token)" do
+      user = user_fixture()
+
+      reset_token =
+        extract_user_token(fn url ->
+          Accounts.deliver_user_reset_password_instructions(user, url)
+        end)
+
+      refute Accounts.get_user_by_invite_token(reset_token)
+      assert Accounts.get_user_by_reset_password_token(reset_token).id == user.id
+    end
+  end
+
+  describe "delete_user/1" do
+    test "refuses to delete the last remaining user" do
+      user = user_fixture()
+      assert {:error, :last_user} = Accounts.delete_user(user)
+      assert Accounts.get_user_by_email(user.email)
+    end
+
+    test "deletes a user when others remain" do
+      keep = user_fixture()
+      remove = user_fixture()
+
+      assert {:ok, _} = Accounts.delete_user(remove)
+      refute Accounts.get_user_by_email(remove.email)
+      assert Accounts.get_user_by_email(keep.email)
+    end
+
+    test "ignores unconfirmed invite stubs when guarding the last active user" do
+      admin = user_fixture()
+
+      extract_user_token(fn url ->
+        {:ok, _user} = Accounts.invite_user(unique_user_email(), url)
+      end)
+
+      # A dangling invite stub must not let the only active admin be deleted.
+      assert {:error, :last_user} = Accounts.delete_user(admin)
+    end
+
+    test "always allows deleting an unconfirmed invite stub" do
+      _admin = user_fixture()
+
+      stub_token =
+        extract_user_token(fn url ->
+          {:ok, _user} = Accounts.invite_user(unique_user_email(), url)
+        end)
+
+      stub = Accounts.get_user_by_invite_token(stub_token)
+      assert {:ok, _} = Accounts.delete_user(stub)
+    end
+  end
 end

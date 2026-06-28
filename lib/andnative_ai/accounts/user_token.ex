@@ -11,6 +11,13 @@ defmodule AndnativeAi.Accounts.UserToken do
   # logins a basic expiration window.
   @session_validity_in_days 60
 
+  # Email tokens (reset, invite) are hashed at rest — only the SHA-256 hash is
+  # stored, while the raw token travels in the emailed link. A DB read therefore
+  # yields no usable token.
+  @hash_algorithm :sha256
+  @reset_password_validity_in_days 1
+  @invite_validity_in_days 7
+
   schema "users_tokens" do
     field :token, :binary
     field :context, :string
@@ -44,4 +51,58 @@ defmodule AndnativeAi.Accounts.UserToken do
   def by_token_and_context_query(token, context) do
     from UserToken, where: [token: ^token, context: ^context]
   end
+
+  @doc """
+  Returns a query for all of a user's tokens, optionally filtered to specific
+  contexts. Used to invalidate sessions and email tokens on password change.
+  """
+  def by_user_and_contexts_query(user, :all) do
+    from t in UserToken, where: t.user_id == ^user.id
+  end
+
+  def by_user_and_contexts_query(user, [_ | _] = contexts) do
+    from t in UserToken, where: t.user_id == ^user.id and t.context in ^contexts
+  end
+
+  @doc """
+  Builds a hashed email token for the given context ("reset_password" or
+  "invite"). Returns the raw, URL-safe token to email and the `UserToken`
+  struct (carrying the hash) to persist.
+  """
+  def build_email_token(user, context) do
+    token = :crypto.strong_rand_bytes(@rand_size)
+    hashed_token = :crypto.hash(@hash_algorithm, token)
+
+    {Base.url_encode64(token, padding: false),
+     %UserToken{token: hashed_token, context: context, user_id: user.id}}
+  end
+
+  @doc """
+  Returns `{:ok, query}` that fetches the user for a valid, unexpired email
+  token, or `:error` when the token is not decodable.
+  """
+  def verify_email_token_query(token, context) do
+    case Base.url_decode64(token, padding: false) do
+      {:ok, decoded_token} ->
+        hashed_token = :crypto.hash(@hash_algorithm, decoded_token)
+        days = days_for_context(context)
+
+        query =
+          from token in by_token_and_context_query(hashed_token, context),
+            join: user in assoc(token, :user),
+            where: token.inserted_at > ago(^days, "day"),
+            select: user
+
+        {:ok, query}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp days_for_context("reset_password"), do: @reset_password_validity_in_days
+  defp days_for_context("invite"), do: @invite_validity_in_days
+
+  defp days_for_context(context),
+    do: raise(ArgumentError, "unknown email token context: #{inspect(context)}")
 end
