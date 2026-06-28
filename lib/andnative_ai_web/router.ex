@@ -39,6 +39,7 @@ defmodule AndnativeAiWeb.Router do
       on_mount: [{AndnativeAiWeb.UserAuth, :mount_current_user}] do
       live "/users/reset-password", UserForgotPasswordLive
       live "/users/reset-password/:token", UserResetPasswordLive
+      live "/users/invite/:token", UserAcceptInvitationLive
     end
   end
 
@@ -60,6 +61,7 @@ defmodule AndnativeAiWeb.Router do
       live "/admin/runtime", Admin.RuntimeLive
 
       live "/users/settings", UserSettingsLive
+      live "/admin/users/invite", Admin.UserInviteLive
     end
   end
 
