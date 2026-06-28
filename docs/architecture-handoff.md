@@ -23,6 +23,9 @@ tenant is created by `AndnativeAi.Memory.ensure_demo_tenant!/0` with slug
   `document`, `slack_channel`, and `slack_thread`.
 - `memory_items`: distilled/searchable chunks with embedding, provenance,
   visibility, retention class, optional Slack channel id, and soft-delete state.
+- `runtime_audit_events`: persisted control-plane evidence for source
+  lifecycle and runtime answering. Rows are tenant-scoped and can link to an
+  agent, source, memory item, request id, citation URL, and minimized metadata.
 - `slack_installations`: OAuth-installed Slack workspaces, keyed by Slack
   `team_id`, with the workspace bot token and bot user ID used for event
   routing and response posting.
@@ -38,17 +41,22 @@ Search excludes deleted sources and deleted items.
 Path:
 `AndnativeAiWeb.Admin.ControlPlaneLive` ->
 `AndnativeAi.ControlPlane` ->
-current agents, sources, Slack installs, memory items, and OpenClaw health.
+current agents, source counts, Slack install count, memory chunk count, OpenClaw
+health, and recent audit rows.
 
 Behavior:
 
 - Shows the prospect-facing governed-memory appliance dashboard at
   `/admin/control-plane`.
 - Uses live data for source counts, memory chunk counts, Slack installs, agent
-  sync health, and source lifecycle events.
-- Shows explicit demo-fallback runtime trust events for policy checks, memory
-  search, answer generation, citation attachment, routing, and human approval
-  until persisted runtime audit events exist.
+  sync health, and persisted audit events.
+- Shows an honest empty state when no runtime audit events exist. The page no
+  longer fabricates runtime trust events on refresh.
+- Runtime timeline rows come from `runtime_audit_events` and include event kind,
+  timestamp, actor/component, status, request id when present, and citation link
+  when present.
+- Event-kind validation and display metadata share
+  `AndnativeAi.Runtime.AuditEventKinds` so the schema and UI do not drift.
 
 ### Document Upload
 
@@ -73,7 +81,8 @@ Path:
 `AndnativeAi.Slack.Installations.resolve_payload/3` ->
 `AndnativeAi.Slack.Ingestion` ->
 `AndnativeAi.Slack.Distiller` ->
-`AndnativeAi.Memory.Service.ingest/6`
+`AndnativeAi.Memory.Service.ingest/6` ->
+`AndnativeAi.Runtime.Audit`
 
 Behavior:
 
@@ -93,6 +102,9 @@ Behavior:
 - Slack edits/deletes replace channel memory and backfill current history.
 - `member_left_channel` and `member_kicked_channel` soft-delete the channel
   source if Slack sends the event for the bot user.
+- Source ingest, memory indexing, and source delete paths write audit evidence
+  for the control plane. These writes are best-effort so memory changes do not
+  roll back if audit persistence is temporarily unavailable.
 
 ### Memory Search
 
@@ -112,7 +124,8 @@ Behavior:
 Path:
 Slack `app_mention` ->
 `AndnativeAi.Runtime.Responder` ->
-`AndnativeAi.Runtime.OpenClaw.dispatch_mention/2`
+`AndnativeAi.Runtime.OpenClaw.dispatch_mention/2` ->
+`AndnativeAi.Runtime.Audit`
 
 Behavior:
 
@@ -120,11 +133,20 @@ Behavior:
 - If `OPENAI_API_KEY` is configured, `OpenAIClient` calls the OpenAI Responses
   API with the agent identity, question, memory context, and citations.
 - If no API key is configured or the API call fails, a deterministic fallback
-  returns the top memory item and citations.
+  returns the top memory item and citations. Configured model-call failures also
+  create a `runtime_error` audit row.
 - The fallback supports the demo instruction
   `Start every conversation with "Yo!"`.
 - If no relevant memory exists, the answer says it could not find a relevant
   source.
+- The responder uses Slack `event_id` when present, then channel/timestamp, as a
+  stable request id for answered Slack mentions. Direct non-Slack calls generate
+  a UUID. Audit rows correlate mention received, memory searched, answer
+  generated, citation attached, Slack response posted, skipped/failed delivery,
+  and runtime/model failure events.
+- Audit metadata is minimized. It stores ids, counts, statuses, citations, and
+  sanitized bounded error details rather than full Slack payloads, bot tokens,
+  raw questions, or answer bodies.
 
 ## Demo Commands
 
@@ -167,6 +189,10 @@ docker compose config --quiet
 - Slack backfill only sees the most recent `SLACK_HISTORY_LIMIT` messages.
 - Embeddings are deterministic local hashes, not production semantic embeddings.
 - OpenClaw integration is a config/runtime adapter shape, not a full gateway.
+- Runtime audit is product evidence for the PoC, not a compliance-grade
+  immutable audit log.
+- Runtime audit rows are append-only in normal app behavior, but duplicate Slack
+  retries are not de-duplicated yet.
 - Admin auth is still Caddy basic auth in the demo deploy. Phoenix-native app
   auth is tracked separately in Linear as AAI-18.
 - Slack OAuth app Client Secret and installed bot tokens are plaintext in
@@ -181,4 +207,10 @@ docker compose config --quiet
 - Add channel/user name hydration for Slack provenance.
 - Replace local embeddings with provider embeddings.
 - Add source-scoped search/debug UI.
+- Add read-only OpenClaw tools for control-plane snapshot and runtime audit rows
+  so agents can inspect the same governance state users see.
+- Add idempotency/deduplication for retried Slack event traces if Slack retry
+  noise becomes visible in demos.
 - Add a hard-delete/admin reset endpoint for non-demo environments.
+- Add compliance-grade audit retention/export only if customer requirements
+  demand it.

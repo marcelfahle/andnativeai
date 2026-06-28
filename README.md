@@ -3,7 +3,7 @@
 This repository contains the smallest useful proof for an &native.ai governed
 memory appliance: a Phoenix/LiveView control panel, Postgres + pgvector memory
 store, filesystem-backed raw source storage, Slack Socket Mode ingestion, and
-OpenClaw-shaped runtime answering.
+OpenClaw-shaped runtime answering with persisted audit evidence.
 
 ## First Run
 
@@ -74,8 +74,8 @@ See `docs/slack-app.md` for the Socket Mode app setup.
 - `docs/agent-setup.md` explains the current agent setup and multiple-agent
   rules.
 - `scripts/compose-persistence-check.sh` verifies memory survives a Compose restart.
-- `/admin/control-plane` shows the prospect-facing appliance dashboard and
-  runtime trust timeline.
+- `/admin/control-plane` shows the governed-memory control plane, operational
+  status, and persisted runtime audit timeline.
 
 ## Development Handoff
 

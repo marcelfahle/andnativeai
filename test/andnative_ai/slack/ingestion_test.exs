@@ -3,6 +3,7 @@ defmodule AndnativeAi.Slack.IngestionTest do
 
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Service
+  alias AndnativeAi.Runtime.Audit
   alias AndnativeAi.Slack.Ingestion
 
   defmodule FakeClient do
@@ -41,6 +42,12 @@ defmodule AndnativeAi.Slack.IngestionTest do
     assert result.text =~ "Backfilled launch decision"
     assert result.source.external_id == "CJOIN"
     assert result.citation_url =~ "example.slack.com"
+
+    assert Enum.any?(
+             Audit.list_recent_events(tenant.id, limit: 10),
+             &(&1.event_kind == "source_ingested" and
+                 &1.metadata["source_type"] == "slack_channel")
+           )
   end
 
   test "new channel messages after invite are captured" do
@@ -184,6 +191,12 @@ defmodule AndnativeAi.Slack.IngestionTest do
              )
 
     assert [] = Service.search(tenant.id, "launch citation", %{limit: 3})
+
+    assert Enum.any?(
+             Audit.list_recent_events(tenant.id, limit: 10),
+             &(&1.event_kind == "source_deleted" and
+                 &1.source_id == source_id_for(tenant.id, "CJOIN"))
+           )
   end
 
   defp tenant_fixture(slug) do
@@ -195,5 +208,11 @@ defmodule AndnativeAi.Slack.IngestionTest do
       })
 
     tenant
+  end
+
+  defp source_id_for(tenant_id, channel_id) do
+    tenant_id
+    |> Memory.get_source_by_external_id("slack_channel", channel_id)
+    |> Map.fetch!(:id)
   end
 end

@@ -1,8 +1,9 @@
 defmodule AndnativeAi.Memory.ServiceTest do
-  use AndnativeAi.DataCase, async: true
+  use AndnativeAi.DataCase, async: false
 
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Service
+  alias AndnativeAi.Runtime.Audit
 
   describe "ingest/search/delete" do
     test "ingests chunks and retrieves the right one by vector query" do
@@ -42,6 +43,23 @@ defmodule AndnativeAi.Memory.ServiceTest do
       assert result.source.name == "Demo runbook"
       assert result.citation_url == "https://docs.example.com/demo-runbook#refunds"
       assert result.provenance["document"] == "demo-runbook"
+
+      event_kinds =
+        tenant.id
+        |> Audit.list_recent_events(limit: 10)
+        |> Enum.map(& &1.event_kind)
+
+      assert "source_ingested" in event_kinds
+      assert "memory_indexed" in event_kinds
+
+      source_event =
+        tenant.id
+        |> Audit.list_recent_events(limit: 10)
+        |> Enum.find(&(&1.event_kind == "source_ingested"))
+
+      assert source_event.source_id == source.id
+      assert source_event.metadata["item_count"] == 3
+      assert source_event.citation_url == "https://docs.example.com/demo-runbook"
     end
 
     test "search only returns rows for the requested tenant" do
@@ -93,6 +111,52 @@ defmodule AndnativeAi.Memory.ServiceTest do
       assert {:ok, %{deleted_items_count: 1}} = Service.delete_source(tenant.id, source.id)
 
       assert [] = Service.search(tenant.id, "citation source", %{limit: 5})
+
+      [delete_event] =
+        tenant.id
+        |> Audit.list_recent_events(limit: 10)
+        |> Enum.filter(&(&1.event_kind == "source_deleted"))
+
+      assert delete_event.source_id == source.id
+      assert delete_event.metadata["deleted_items_count"] == 1
+    end
+
+    test "source operations survive audit recorder failure" do
+      tenant = tenant_fixture("audit-reject")
+      previous_recorder = Application.get_env(:andnative_ai, :audit_recorder)
+
+      Application.put_env(:andnative_ai, :audit_recorder, fn _attrs ->
+        {:error, :audit_unavailable}
+      end)
+
+      on_exit(fn ->
+        if previous_recorder do
+          Application.put_env(:andnative_ai, :audit_recorder, previous_recorder)
+        else
+          Application.delete_env(:andnative_ai, :audit_recorder)
+        end
+      end)
+
+      assert {:ok, %{source: source, items: [_item]}} =
+               Service.ingest(
+                 tenant.id,
+                 %{
+                   source_type: "document",
+                   source_id: "audit-reject-source",
+                   name: "audit-reject-source.md",
+                   permalink_or_url: "https://docs.example.com/audit-reject"
+                 },
+                 ["Audit failures must not block memory ingestion."],
+                 %{},
+                 "tenant",
+                 "default"
+               )
+
+      assert source.status == "ready"
+      assert [_result] = Service.search(tenant.id, "memory ingestion", %{limit: 5})
+
+      assert {:ok, %{deleted_items_count: 1}} = Service.delete_source(tenant.id, source.id)
+      assert [] = Service.search(tenant.id, "memory ingestion", %{limit: 5})
     end
 
     test "search does not return unrelated nearest-neighbor results" do
