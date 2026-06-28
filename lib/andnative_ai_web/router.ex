@@ -61,6 +61,7 @@ defmodule AndnativeAiWeb.Router do
       live "/admin/runtime", Admin.RuntimeLive
 
       live "/users/settings", UserSettingsLive
+      live "/admin/users", Admin.UsersLive
       live "/admin/users/invite", Admin.UserInviteLive
     end
   end
