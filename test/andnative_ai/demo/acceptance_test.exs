@@ -93,5 +93,14 @@ defmodule AndnativeAi.Demo.AcceptanceTest do
              Service.search(tenant.id, "reimbursement approval", %{limit: 5}),
              &(&1.source.name == "handbook.md")
            )
+
+    assert {:ok, unknown_response} =
+             OpenClaw.dispatch_mention(agent, %{
+               "type" => "app_mention",
+               "text" => "<@UBOT> When do reimbursements need manager approval?"
+             })
+
+    assert unknown_response.answer =~ "could not find"
+    assert unknown_response.citations == []
   end
 end

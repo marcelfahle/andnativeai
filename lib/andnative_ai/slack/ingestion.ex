@@ -13,6 +13,7 @@ defmodule AndnativeAi.Slack.Ingestion do
     bot_user_id = Keyword.get(opts, :bot_user_id)
 
     if event["user"] == bot_user_id do
+      replace_channel_memory(tenant_id, event["channel"])
       backfill_channel(tenant_id, event, opts)
     else
       {:ignored, :not_bot_join}
@@ -30,10 +31,30 @@ defmodule AndnativeAi.Slack.Ingestion do
     end
   end
 
+  def handle_event(
+        tenant_id,
+        %{"type" => "message", "subtype" => subtype, "channel" => channel_id} = event,
+        opts
+      )
+      when subtype in ["message_changed", "message_deleted"] do
+    if joined_channel?(tenant_id, channel_id) do
+      replace_channel_memory(tenant_id, channel_id)
+      backfill_channel(tenant_id, event, opts)
+    else
+      {:ignored, :unjoined_channel}
+    end
+  end
+
   def handle_event(tenant_id, %{"type" => "message", "channel" => channel_id} = event, opts) do
     cond do
       Map.has_key?(event, "subtype") ->
         {:ignored, :message_subtype}
+
+      bot_authored?(event, opts) ->
+        {:ignored, :bot_authored_message}
+
+      mentions_bot?(event, opts) ->
+        {:ignored, :bot_mention_memory}
 
       joined_channel?(tenant_id, channel_id) ->
         ingest_messages(tenant_id, channel_id, [event], opts)
@@ -91,6 +112,27 @@ defmodule AndnativeAi.Slack.Ingestion do
       source -> is_nil(source.deleted_at)
     end
   end
+
+  defp replace_channel_memory(_tenant_id, nil), do: :ok
+
+  defp replace_channel_memory(tenant_id, channel_id) do
+    case Memory.get_source_by_external_id(tenant_id, "slack_channel", channel_id) do
+      nil -> :ok
+      source -> Service.delete_source(tenant_id, source.id)
+    end
+  end
+
+  defp bot_authored?(event, opts) do
+    bot_user_id = Keyword.get(opts, :bot_user_id)
+    bot_user_id not in [nil, ""] and event["user"] == bot_user_id
+  end
+
+  defp mentions_bot?(%{"text" => text}, opts) when is_binary(text) do
+    bot_user_id = Keyword.get(opts, :bot_user_id)
+    bot_user_id not in [nil, ""] and String.contains?(text, "<@#{bot_user_id}>")
+  end
+
+  defp mentions_bot?(_event, _opts), do: false
 
   defp channel_name(channel_id, opts) do
     Keyword.get(opts, :channel_name) || "Slack #{channel_id}"

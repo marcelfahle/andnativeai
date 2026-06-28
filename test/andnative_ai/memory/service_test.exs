@@ -94,6 +94,22 @@ defmodule AndnativeAi.Memory.ServiceTest do
 
       assert [] = Service.search(tenant.id, "citation source", %{limit: 5})
     end
+
+    test "search does not return unrelated nearest-neighbor results" do
+      tenant = tenant_fixture("unrelated-search")
+
+      {:ok, _} =
+        Service.ingest(
+          tenant.id,
+          source_attrs("launch-source"),
+          ["The launch decision is owned by Ada and cites Slack."],
+          %{},
+          "tenant",
+          "default"
+        )
+
+      assert [] = Service.search(tenant.id, "reimbursements manager approval", %{limit: 5})
+    end
   end
 
   defp tenant_fixture(slug) do

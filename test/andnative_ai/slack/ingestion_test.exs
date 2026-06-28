@@ -70,6 +70,81 @@ defmodule AndnativeAi.Slack.IngestionTest do
     assert result.text =~ "Live channel message"
   end
 
+  test "bot mentions are answered elsewhere but not captured as durable Slack memory" do
+    tenant = tenant_fixture("slack-mention-ignore")
+
+    {:ok, _} =
+      Ingestion.handle_event(
+        tenant.id,
+        %{"type" => "member_joined_channel", "user" => "UBOT", "channel" => "CJOIN"},
+        @opts
+      )
+
+    assert {:ignored, :bot_mention_memory} =
+             Ingestion.handle_event(
+               tenant.id,
+               %{
+                 "type" => "message",
+                 "channel" => "CJOIN",
+                 "user" => "U2",
+                 "ts" => "1710000003.000100",
+                 "text" => "<@UBOT> when do reimbursements need manager approval?"
+               },
+               @opts
+             )
+
+    refute Enum.any?(
+             Service.search(tenant.id, "reimbursements manager approval", %{limit: 5}),
+             &String.contains?(&1.text, "reimbursements need manager approval")
+           )
+  end
+
+  test "Slack message delete refreshes channel memory from current history" do
+    tenant = tenant_fixture("slack-delete-refresh")
+
+    {:ok, _} =
+      Ingestion.handle_event(
+        tenant.id,
+        %{"type" => "member_joined_channel", "user" => "UBOT", "channel" => "CJOIN"},
+        @opts
+      )
+
+    {:ok, _} =
+      Ingestion.handle_event(
+        tenant.id,
+        %{
+          "type" => "message",
+          "channel" => "CJOIN",
+          "user" => "U2",
+          "ts" => "1710000004.000100",
+          "text" => "Temporary reimbursement approval decision."
+        },
+        @opts
+      )
+
+    assert Enum.any?(
+             Service.search(tenant.id, "temporary reimbursement approval", %{limit: 5}),
+             &String.contains?(&1.text, "Temporary reimbursement")
+           )
+
+    assert {:ok, %{items: [_item]}} =
+             Ingestion.handle_event(
+               tenant.id,
+               %{
+                 "type" => "message",
+                 "subtype" => "message_deleted",
+                 "channel" => "CJOIN",
+                 "deleted_ts" => "1710000004.000100"
+               },
+               @opts
+             )
+
+    refute Enum.any?(
+             Service.search(tenant.id, "temporary reimbursement approval", %{limit: 5}),
+             &String.contains?(&1.text, "Temporary reimbursement")
+           )
+  end
+
   test "messages from unjoined channels are ignored" do
     tenant = tenant_fixture("slack-ignore")
 

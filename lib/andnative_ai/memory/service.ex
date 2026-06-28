@@ -155,9 +155,12 @@ defmodule AndnativeAi.Memory.Service do
     query_terms = Embeddings.search_terms(query)
 
     results
-    |> Enum.sort_by(fn result ->
-      {-lexical_score(query_terms, result.text), -result.score}
+    |> Enum.map(fn result -> {result, lexical_score(query_terms, result.text)} end)
+    |> Enum.reject(fn {_result, score} -> score == 0 end)
+    |> Enum.sort_by(fn {result, score} ->
+      {-score, -result.score}
     end)
+    |> Enum.map(fn {result, _score} -> result end)
     |> Enum.take(limit)
   end
 

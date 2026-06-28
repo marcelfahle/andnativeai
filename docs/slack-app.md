@@ -154,6 +154,26 @@ channel:
 The invite triggers a public-channel backfill. New channel messages are only
 ingested after the bot has joined the channel.
 
+## How Slack Memory Refresh Works
+
+Slack messages are distilled into channel-level memory items. The PoC does not
+store every Slack message as a separate row.
+
+- Inviting the bot backfills recent channel history and replaces existing memory
+  for that Slack channel.
+- New normal channel messages are distilled and appended.
+- Messages that mention the bot are answered, but are not stored as knowledge.
+- Slack message edits/deletes trigger a fresh backfill for that channel, so
+  deleted demo chatter should age out of memory once Slack sends the event.
+- Removing the bot from the channel soft-deletes that channel source and hides
+  its memory from search.
+
+For a clean recorded demo, run:
+
+```sh
+docker compose exec -T control-panel mix run scripts/reset-demo-memory.exs
+```
+
 ## Smoke Test
 
 1. In the joined public channel, post a durable decision:
