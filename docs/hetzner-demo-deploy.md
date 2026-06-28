@@ -138,9 +138,15 @@ the default password **`changeme123`**. Log in and change it immediately at
 
 ### Adding users
 
-- **Invite (recommended):** while logged in, open **Invite** in the nav
-  (`/admin/users/invite`) and enter the person's email. They receive a link to
-  set their own password and activate. Requires email delivery (see below).
+The **Users** page (`/admin/users`, in the nav) lists everyone with their status
+(Active vs. Invited), and lets you delete a user or **resend an invitation** to a
+still-pending invitee — useful for recovering invites whose original email failed
+to send. You can't delete your own account or the last remaining admin.
+
+- **Invite (recommended):** from the Users page (or `/admin/users/invite`), enter
+  the person's email. They receive a link to set their own password and activate.
+  Requires email delivery (see below). If their first invite didn't arrive, use
+  **Resend invite** on the Users page once email is configured.
 - **Env seed:** set `SEED_MATT_EMAIL` and `SEED_MATT_PASSWORD` (or any other
   pair) in `/opt/andnativeai/.env`; the entrypoint seeds them on the next
   deploy. No password is ever stored in the repo. Seeding is idempotent — an

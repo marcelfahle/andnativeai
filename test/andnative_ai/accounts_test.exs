@@ -233,6 +233,51 @@ defmodule AndnativeAi.AccountsTest do
     end
   end
 
+  describe "list_users/0" do
+    test "returns active and invited users" do
+      active = user_fixture()
+
+      invited_token =
+        extract_user_token(fn url ->
+          {:ok, _user} = Accounts.invite_user(unique_user_email(), url)
+        end)
+
+      invited = Accounts.get_user_by_invite_token(invited_token)
+      emails = Accounts.list_users() |> Enum.map(& &1.email)
+
+      assert active.email in emails
+      assert invited.email in emails
+    end
+  end
+
+  describe "resend_user_invitation/2" do
+    test "rotates the invite token and re-sends to a pending user" do
+      email = unique_user_email()
+
+      old_token =
+        extract_user_token(fn url ->
+          {:ok, _user} = Accounts.invite_user(email, url)
+        end)
+
+      user = Accounts.get_user_by_invite_token(old_token)
+
+      new_token =
+        extract_user_token(fn url ->
+          {:ok, _user} = Accounts.resend_user_invitation(user, url)
+        end)
+
+      refute Accounts.get_user_by_invite_token(old_token)
+      assert Accounts.get_user_by_invite_token(new_token).id == user.id
+    end
+
+    test "rejects resending to an already-active user" do
+      user = user_fixture()
+
+      assert {:error, :already_active} =
+               Accounts.resend_user_invitation(user, fn _ -> "https://example.com" end)
+    end
+  end
+
   describe "delete_user/1" do
     test "refuses to delete the last remaining user" do
       user = user_fixture()
