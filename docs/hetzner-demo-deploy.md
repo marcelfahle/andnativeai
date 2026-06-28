@@ -121,53 +121,78 @@ The admin UI uses app-level email/password login. Users live in the `users`
 table, and every `/admin/*` route (plus `/slack/install`) requires a logged-in
 session. `/slack/oauth/callback` stays public so Slack can complete installs.
 
-The `control-panel` entrypoint (`bin/control-panel`) already runs
-`mix ecto.migrate` and `mix run priv/repo/seeds.exs` on every start, so the
-`users` table is created and admins are (re)seeded automatically on deploy.
+The `control-panel` entrypoint (`bin/control-panel`) runs `mix ecto.migrate`
+(which seeds the first admin — see below) and `mix run priv/repo/seeds.exs` on
+every start, so the `users` table and admins are provisioned automatically on
+deploy.
 
-### Seeding the initial admins
+### First login
 
-Marcel (`m.fahle@gmail.com`) is always the first user. Passwords are read from
-the environment — **no password is ever stored in the repo or in this doc.**
-Add them to `/opt/andnativeai/.env`:
+The first admin, **`m.fahle@gmail.com`**, is seeded by a database migration with
+the default password **`changeme123`**. Log in and change it immediately at
+**Settings** (`/users/settings`).
 
-```sh
-SEED_MARCEL_PASSWORD=...
-SEED_MATT_PASSWORD=...
-SEED_MATT_EMAIL=matt@...
-```
+> `changeme123` is a one-time bootstrap value, not a real secret — anyone who
+> reaches the login page can use it until it is changed. Change it on first
+> login, and use the invite flow for everyone else.
 
-On the next deploy (or `docker compose ... up -d`), the entrypoint seeds the
-admins. Seeding is idempotent: an existing user is left untouched (its password
-is **not** reset), and a user whose `SEED_*_PASSWORD` is unset is skipped with a
-notice. To seed without a full restart, run the seeds in the running container:
+### Adding users
 
-```sh
-docker compose -p andnativeai -f /opt/andnativeai/deploy/hetzner-demo.compose.yml \
-  exec control-panel mix run priv/repo/seeds.exs
-```
-
-### Rotating or adding users
-
-- **Rotate a password:** delete the user, then re-run the seeds with the new
-  `SEED_*_PASSWORD` set:
+- **Invite (recommended):** while logged in, open **Invite** in the nav
+  (`/admin/users/invite`) and enter the person's email. They receive a link to
+  set their own password and activate. Requires email delivery (see below).
+- **Env seed:** set `SEED_MATT_EMAIL` and `SEED_MATT_PASSWORD` (or any other
+  pair) in `/opt/andnativeai/.env`; the entrypoint seeds them on the next
+  deploy. No password is ever stored in the repo. Seeding is idempotent — an
+  existing user is left untouched, and a user with no password env is skipped.
+  To seed without a restart:
 
   ```sh
   docker compose -p andnativeai -f /opt/andnativeai/deploy/hetzner-demo.compose.yml \
-    exec control-panel \
-    mix run -e 'AndnativeAi.Accounts.get_user_by_email("user@example.com") |> AndnativeAi.Repo.delete!()'
+    exec control-panel mix run priv/repo/seeds.exs
   ```
 
-- **Add a user:** run
-  `mix run -e 'AndnativeAi.Accounts.register_user(%{email: "...", password: "..."})'`
-  in the container, or set another `SEED_*` pair and re-run the seeds.
+### Resetting a forgotten password
+
+Use **Forgot your password?** on the login page (`/users/reset-password`); it
+emails a one-day reset link (requires email delivery). With no email configured,
+an operator can set a new password directly — `reset_user_password/2` does not
+require the current password:
+
+```sh
+docker compose -p andnativeai -f /opt/andnativeai/deploy/hetzner-demo.compose.yml \
+  exec control-panel \
+  mix run -e 'u = AndnativeAi.Accounts.get_user_by_email("user@example.com"); AndnativeAi.Accounts.reset_user_password(u, %{password: "a new strong password"})'
+```
+
+The last remaining user can never be deleted, so the app can't be locked out.
+
+### Email delivery
+
+Password reset and invitations send email via Swoosh:
+
+- **dev / test:** a local/preview adapter — no real email is sent; messages are
+  captured in memory.
+- **prod:** safe by default. With no `MAILER_ADAPTER` set, prod falls back to the
+  local adapter (nothing is sent) so an unconfigured deploy never crashes. To
+  send real mail, set in `/opt/andnativeai/.env`:
+
+  ```sh
+  MAILER_ADAPTER=smtp
+  SMTP_RELAY=smtp.your-provider.com
+  SMTP_USERNAME=...
+  SMTP_PASSWORD=...
+  SMTP_PORT=587
+  MAILER_FROM=no-reply@andnativeai.marcelfahle.net   # optional; defaults to no-reply@<host>
+  ```
+
+  No secret is committed; everything comes from the environment.
 
 ### Local setup
 
 ```sh
-mix setup                                              # deps, DB create + migrate + seed, assets
-SEED_MARCEL_PASSWORD=... mix run priv/repo/seeds.exs   # seed an admin to log in with
-mix phx.server                                         # http://localhost:4000/login
+mix setup        # deps, DB create + migrate (seeds the first admin), assets
+mix phx.server   # http://localhost:4000/login  ->  m.fahle@gmail.com / changeme123
 ```
 
 ## Verify
