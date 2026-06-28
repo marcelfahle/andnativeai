@@ -167,6 +167,10 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
                   >
                     <.icon name="hero-arrow-top-right-on-square" class="size-3.5" /> Source
                   </.link>
+
+                  <span :if={event.citation_label} class="badge badge-outline w-fit">
+                    <.icon name="hero-document-check" class="size-3.5" /> {event.citation_label}
+                  </span>
                 </div>
               </div>
             </li>

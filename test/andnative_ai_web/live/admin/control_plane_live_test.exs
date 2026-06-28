@@ -122,4 +122,31 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLiveTest do
 
     refute has_element?(view, "#audit-timeline", "generated a concise response")
   end
+
+  test "control plane renders non-web citation evidence without crashing", %{conn: conn} do
+    tenant = Memory.ensure_demo_tenant!()
+
+    {:ok, _event} =
+      Audit.record_event(%{
+        tenant_id: tenant.id,
+        event_kind: "citation_attached",
+        component: "openclaw_runtime",
+        actor: "Alpha Agent",
+        status: "attached",
+        summary: "Alpha Agent attached an internal Slack citation.",
+        metadata: %{citation_count: 1},
+        citation_url: "slack://channel/CDEMO"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/admin/control-plane")
+
+    assert has_element?(
+             view,
+             "#audit-timeline",
+             "Alpha Agent attached an internal Slack citation."
+           )
+
+    assert has_element?(view, "#audit-timeline", "Source recorded")
+    refute has_element?(view, "#audit-timeline a[href='slack://channel/CDEMO']")
+  end
 end
