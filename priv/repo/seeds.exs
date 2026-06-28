@@ -14,18 +14,17 @@ alias AndnativeAi.{Accounts, Memory}
 
 Memory.ensure_demo_tenant!()
 
-# Seed the initial demo admins.
+# Seed ADDITIONAL admins from the environment.
 #
-# Passwords are read from the environment so no secret material ever lives in
-# the repo. Marcel (m.fahle@gmail.com) is always the first user. Matt's email
-# can be overridden with SEED_MATT_EMAIL.
+# The first admin (m.fahle@gmail.com) is seeded by a migration with a default
+# password (changed on first login), so it is not handled here. This block
+# provisions any further users (e.g. Matt) from env-supplied passwords — no
+# secret material ever lives in the repo.
 #
 # Re-running these seeds is idempotent: an existing user is left untouched (its
-# password is NOT reset). To rotate a password, delete the user first, then
-# re-run with the new SEED_*_PASSWORD set, or use Accounts.register_user/1 from
-# `iex -S mix`.
+# password is NOT reset). To rotate or add a user, use the in-app reset/invite
+# flows, or Accounts.register_user/1 from `iex -S mix`.
 seed_admins = [
-  %{email: "m.fahle@gmail.com", password_env: "SEED_MARCEL_PASSWORD"},
   %{email: System.get_env("SEED_MATT_EMAIL"), password_env: "SEED_MATT_PASSWORD"}
 ]
 
