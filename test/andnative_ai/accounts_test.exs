@@ -120,7 +120,9 @@ defmodule AndnativeAi.AccountsTest do
 
     test "rejects a wrong current password", %{user: user} do
       {:error, changeset} =
-        Accounts.update_user_password(user, "wrong wrong wrong", %{password: "a new valid password"})
+        Accounts.update_user_password(user, "wrong wrong wrong", %{
+          password: "a new valid password"
+        })
 
       assert %{current_password: ["is not valid"]} = errors_on(changeset)
       assert Accounts.get_user_by_email_and_password(user.email, valid_user_password())
