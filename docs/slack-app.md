@@ -188,6 +188,8 @@ ingested after the bot has joined the channel.
 
 ## OAuth Install Flow
 
+For a shorter test checklist, see `docs/slack-oauth-testing.md`.
+
 1. Ensure `.env` has `SLACK_APP_TOKEN`.
 2. Start `control-panel` and `slack-listener`.
 3. Open `/admin/slack`.

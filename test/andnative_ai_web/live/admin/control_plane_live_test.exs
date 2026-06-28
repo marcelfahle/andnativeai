@@ -1,9 +1,12 @@
 defmodule AndnativeAiWeb.Admin.ControlPlaneLiveTest do
   use AndnativeAiWeb.ConnCase, async: false
 
+  import Ecto.Query
   import Phoenix.LiveViewTest
 
+  alias AndnativeAi.Memory.Agent
   alias AndnativeAi.Memory
+  alias AndnativeAi.Repo
 
   test "control plane shows appliance status cards and runtime trust timeline", %{conn: conn} do
     tenant = Memory.ensure_demo_tenant!()
@@ -66,5 +69,42 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLiveTest do
 
     assert has_element?(view, "#audit-event-source-deleted-#{source.id}")
     assert has_element?(view, "#audit-timeline [data-audit-kind='source_deleted']")
+  end
+
+  test "control plane demo events use the most recently updated agent", %{conn: conn} do
+    tenant = Memory.ensure_demo_tenant!()
+
+    {:ok, old_agent} =
+      Memory.create_agent(tenant.id, %{
+        name: "Zulu Agent",
+        identity: "Old agent.",
+        model: "gpt-4.1-mini",
+        runtime: "openclaw",
+        status: "active"
+      })
+
+    {:ok, new_agent} =
+      Memory.create_agent(tenant.id, %{
+        name: "Alpha Agent",
+        identity: "New agent.",
+        model: "gpt-4.1-mini",
+        runtime: "openclaw",
+        status: "active"
+      })
+
+    old_time = ~U[2026-01-01 00:00:00Z]
+    new_time = ~U[2026-01-02 00:00:00Z]
+
+    from(agent in Agent, where: agent.id == ^old_agent.id)
+    |> Repo.update_all(set: [inserted_at: old_time, updated_at: old_time])
+
+    from(agent in Agent, where: agent.id == ^new_agent.id)
+    |> Repo.update_all(set: [inserted_at: new_time, updated_at: new_time])
+
+    {:ok, view, _html} = live(conn, ~p"/admin/control-plane")
+    html = render(view)
+
+    assert html =~ "Alpha Agent generated a concise response"
+    refute html =~ "Zulu Agent generated a concise response"
   end
 end

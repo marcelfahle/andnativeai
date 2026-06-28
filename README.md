@@ -68,6 +68,9 @@ See `docs/slack-app.md` for the Socket Mode app setup.
 
 - `docs/demo-checklist.md` has the repeatable end-to-end script.
 - `docs/slack-smoke-test.md` has the manual Slack verification.
+- `docs/slack-oauth-testing.md` explains how to test Slack OAuth onboarding.
+- `docs/agent-setup.md` explains the current agent setup and multiple-agent
+  rules.
 - `scripts/compose-persistence-check.sh` verifies memory survives a Compose restart.
 - `/admin/control-plane` shows the prospect-facing appliance dashboard and
   runtime trust timeline.

@@ -12,8 +12,8 @@ defmodule AndnativeAi.ControlPlane do
 
   def snapshot(tenant) do
     agents = Memory.list_agents(tenant.id)
-    sources = Memory.list_sources(tenant.id)
     all_sources = Memory.list_all_sources(tenant.id)
+    sources = Enum.filter(all_sources, &is_nil(&1.deleted_at))
     memory_items = Memory.list_memory_items(tenant.id)
     installations = Installations.list_installations(tenant.id)
     agent_health = Enum.map(agents, &OpenClaw.health/1)
@@ -191,7 +191,7 @@ defmodule AndnativeAi.ControlPlane do
 
   defp demo_audit_events(all_sources, agents, memory_items, now) do
     latest_source = List.first(all_sources)
-    latest_agent = List.first(agents)
+    latest_agent = latest_agent(agents)
 
     [
       %{
@@ -317,4 +317,16 @@ defmodule AndnativeAi.ControlPlane do
 
   defp runtime_actor(nil), do: "Runtime responder"
   defp runtime_actor(agent), do: agent.name
+
+  defp latest_agent([]), do: nil
+
+  defp latest_agent(agents) do
+    Enum.max_by(agents, fn agent ->
+      agent
+      |> agent_timestamp()
+      |> DateTime.to_unix()
+    end)
+  end
+
+  defp agent_timestamp(agent), do: agent.updated_at || agent.inserted_at
 end
