@@ -138,5 +138,6 @@ Why:
 
 Current caveat:
 
-- Bot tokens are plaintext in Postgres for the PoC. Production needs encrypted
-  secret storage and uninstall/revocation handling.
+- Bot tokens and saved Slack OAuth Client Secrets are plaintext in Postgres for
+  the PoC. Production needs encrypted secret storage and uninstall/revocation
+  handling.

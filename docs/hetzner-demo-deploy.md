@@ -77,6 +77,22 @@ Expected:
 - unauthenticated HTTPS returns `401`
 - authenticated browser access reaches `/admin/agents`
 
+## Slack OAuth
+
+The server still needs `SLACK_APP_TOKEN` in `/opt/andnativeai/.env` so Socket
+Mode can open the app-level WebSocket.
+
+Workspace OAuth onboarding can be completed from the UI:
+
+1. Open `https://andnativeai.marcelfahle.net/admin/slack`.
+2. Save the Slack app Client ID, Client Secret, Redirect URI, and bot scopes in
+   **OAuth app settings**.
+3. Add the same redirect URI in Slack's **OAuth & Permissions** settings:
+   `https://andnativeai.marcelfahle.net/slack/oauth/callback`.
+4. Click **Connect Slack** and approve the app.
+
+PoC caveat: saved Slack OAuth app settings are plaintext in Postgres.
+
 ## Backups
 
 Snapshot or back up:

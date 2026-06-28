@@ -9,13 +9,13 @@ defmodule AndnativeAiWeb.SlackOAuthController do
   def install(conn, _params) do
     tenant = Memory.ensure_demo_tenant!()
 
-    if Installations.oauth_configured?() do
+    if Installations.oauth_configured?(tenant.id) do
       state = oauth_state()
 
       conn
       |> put_session(:slack_oauth_state, state)
       |> put_session(:slack_oauth_tenant_id, tenant.id)
-      |> redirect(external: authorize_url(state))
+      |> redirect(external: authorize_url(tenant.id, state))
     else
       conn
       |> put_flash(:error, "Slack OAuth is missing SLACK_CLIENT_ID or SLACK_CLIENT_SECRET.")
@@ -35,7 +35,12 @@ defmodule AndnativeAiWeb.SlackOAuthController do
 
     with :ok <- verify_state(conn, state),
          {:ok, body} <-
-           client().oauth_v2_access(client_id(), client_secret(), code, redirect_uri()),
+           client().oauth_v2_access(
+             Installations.client_id(tenant_id),
+             Installations.client_secret(tenant_id),
+             code,
+             redirect_uri(tenant_id)
+           ),
          {:ok, installation} <- Installations.upsert_oauth_installation(tenant_id, body) do
       conn
       |> clear_oauth_session()
@@ -57,12 +62,12 @@ defmodule AndnativeAiWeb.SlackOAuthController do
     |> redirect(to: ~p"/admin/slack")
   end
 
-  defp authorize_url(state) do
+  defp authorize_url(tenant_id, state) do
     query =
       %{
-        client_id: client_id(),
-        scope: Installations.default_scopes(),
-        redirect_uri: redirect_uri(),
+        client_id: Installations.client_id(tenant_id),
+        scope: Installations.bot_scopes(tenant_id),
+        redirect_uri: redirect_uri(tenant_id),
         state: state
       }
       |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
@@ -99,15 +104,12 @@ defmodule AndnativeAiWeb.SlackOAuthController do
 
   defp oauth_error(_reason), do: "Slack install failed."
 
-  defp redirect_uri do
-    case Installations.redirect_uri() do
+  defp redirect_uri(tenant_id) do
+    case Installations.redirect_uri(tenant_id) do
       "" -> url(~p"/slack/oauth/callback")
       uri -> uri
     end
   end
-
-  defp client_id, do: System.get_env("SLACK_CLIENT_ID", "")
-  defp client_secret, do: System.get_env("SLACK_CLIENT_SECRET", "")
 
   defp client do
     Application.get_env(:andnative_ai, :slack_client, Client)

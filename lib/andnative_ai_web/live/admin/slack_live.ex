@@ -14,6 +14,7 @@ defmodule AndnativeAiWeb.Admin.SlackLive do
       |> Enum.filter(&(&1.source_type == "slack_channel"))
 
     installations = Installations.list_installations(tenant.id)
+    oauth_config = oauth_config(tenant.id)
 
     {:ok,
      socket
@@ -22,7 +23,22 @@ defmodule AndnativeAiWeb.Admin.SlackLive do
      |> assign(:slack_sources, slack_sources)
      |> assign(:installations, installations)
      |> assign(:connection_status, connection_status(installations))
-     |> assign(:oauth_configured?, Installations.oauth_configured?())}
+     |> assign(:oauth_config, oauth_config)
+     |> assign(:oauth_configured?, Installations.oauth_configured?(tenant.id))}
+  end
+
+  @impl true
+  def handle_event("save_oauth_config", %{"oauth_config" => params}, socket) do
+    case Installations.upsert_oauth_config(socket.assigns.tenant.id, params) do
+      {:ok, _config} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Slack OAuth app settings saved.")
+         |> refresh()}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Slack OAuth app settings could not be saved.")}
+    end
   end
 
   defp connection_status(installations) do
@@ -39,6 +55,28 @@ defmodule AndnativeAiWeb.Admin.SlackLive do
       true ->
         "disabled"
     end
+  end
+
+  defp refresh(socket) do
+    tenant = socket.assigns.tenant
+    installations = Installations.list_installations(tenant.id)
+
+    socket
+    |> assign(:installations, installations)
+    |> assign(:connection_status, connection_status(installations))
+    |> assign(:oauth_config, oauth_config(tenant.id))
+    |> assign(:oauth_configured?, Installations.oauth_configured?(tenant.id))
+  end
+
+  defp oauth_config(tenant_id) do
+    settings = Installations.oauth_settings(tenant_id)
+
+    redirect_uri =
+      if settings.redirect_uri == "",
+        do: url(~p"/slack/oauth/callback"),
+        else: settings.redirect_uri
+
+    %{settings | redirect_uri: redirect_uri}
   end
 
   @impl true
@@ -87,8 +125,73 @@ defmodule AndnativeAiWeb.Admin.SlackLive do
             </.link>
           </div>
           <p :if={!@oauth_configured?} class="mt-3 text-sm text-error">
-            Set SLACK_CLIENT_ID and SLACK_CLIENT_SECRET to enable OAuth installs.
+            Save Slack Client ID and Client Secret to enable OAuth installs.
           </p>
+        </section>
+
+        <section class="rounded-lg border border-base-300 bg-base-100">
+          <div class="border-b border-base-300 px-5 py-4">
+            <h2 class="text-base font-semibold">OAuth app settings</h2>
+          </div>
+          <form id="slack-oauth-config-form" phx-submit="save_oauth_config" class="p-5">
+            <div class="grid gap-4 md:grid-cols-2">
+              <label class="form-control">
+                <span class="label">
+                  <span class="label-text">Client ID</span>
+                </span>
+                <input
+                  name="oauth_config[client_id]"
+                  value={@oauth_config.client_id}
+                  class="input input-bordered"
+                  autocomplete="off"
+                />
+              </label>
+              <label class="form-control">
+                <span class="label">
+                  <span class="label-text">Client Secret</span>
+                </span>
+                <input
+                  type="password"
+                  name="oauth_config[client_secret]"
+                  value=""
+                  placeholder={
+                    if @oauth_config.client_secret_set?,
+                      do: "Saved; leave blank to keep",
+                      else: "Client secret"
+                  }
+                  class="input input-bordered"
+                  autocomplete="new-password"
+                />
+              </label>
+              <label class="form-control md:col-span-2">
+                <span class="label">
+                  <span class="label-text">Redirect URI</span>
+                </span>
+                <input
+                  name="oauth_config[redirect_uri]"
+                  value={@oauth_config.redirect_uri}
+                  class="input input-bordered"
+                  autocomplete="off"
+                />
+              </label>
+              <label class="form-control md:col-span-2">
+                <span class="label">
+                  <span class="label-text">Bot scopes</span>
+                </span>
+                <input
+                  name="oauth_config[bot_scopes]"
+                  value={@oauth_config.bot_scopes}
+                  class="input input-bordered"
+                  autocomplete="off"
+                />
+              </label>
+            </div>
+            <div class="mt-5 flex justify-end">
+              <button type="submit" class="btn btn-secondary">
+                <.icon name="hero-check" class="size-4" /> Save settings
+              </button>
+            </div>
+          </form>
         </section>
 
         <section class="rounded-lg border border-base-300 bg-base-100">

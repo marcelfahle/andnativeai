@@ -4,6 +4,7 @@ defmodule AndnativeAiWeb.Admin.StatusPagesTest do
   import Phoenix.LiveViewTest
 
   alias AndnativeAi.Memory
+  alias AndnativeAi.Slack.Installations
 
   test "sources and Slack pages show Slack channel ingestion status", %{conn: conn} do
     tenant = Memory.ensure_demo_tenant!()
@@ -23,6 +24,33 @@ defmodule AndnativeAiWeb.Admin.StatusPagesTest do
     {:ok, slack_view, _html} = live(conn, ~p"/admin/slack")
     assert has_element?(slack_view, "#slack-channels [id^='slack-source-']")
     assert has_element?(slack_view, "#slack-connection-status")
+    assert has_element?(slack_view, "#slack-oauth-config-form")
+  end
+
+  test "Slack page saves OAuth app settings", %{conn: conn} do
+    tenant = Memory.ensure_demo_tenant!()
+
+    {:ok, slack_view, _html} = live(conn, ~p"/admin/slack")
+
+    slack_view
+    |> form("#slack-oauth-config-form", %{
+      oauth_config: %{
+        client_id: "client-live",
+        client_secret: "secret-live",
+        redirect_uri: "https://live.example.com/slack/oauth/callback",
+        bot_scopes: "app_mentions:read,chat:write"
+      }
+    })
+    |> render_submit()
+
+    assert Installations.oauth_configured?(tenant.id)
+
+    settings = Installations.oauth_settings(tenant.id)
+    assert settings.client_id == "client-live"
+    assert settings.client_secret == "secret-live"
+    assert settings.redirect_uri == "https://live.example.com/slack/oauth/callback"
+
+    assert render(slack_view) =~ "Saved; leave blank to keep"
   end
 
   test "runtime page shows OpenClaw health without raw gateway controls", %{conn: conn} do

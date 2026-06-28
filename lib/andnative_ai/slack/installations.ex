@@ -2,7 +2,7 @@ defmodule AndnativeAi.Slack.Installations do
   import Ecto.Query
 
   alias AndnativeAi.Repo
-  alias AndnativeAi.Slack.Installation
+  alias AndnativeAi.Slack.{Installation, OAuthConfig}
 
   def list_installations(tenant_id) do
     Repo.all(
@@ -35,6 +35,23 @@ defmodule AndnativeAi.Slack.Installations do
             is_nil(installation.deleted_at),
         limit: 1
     )
+  end
+
+  def get_oauth_config(tenant_id), do: Repo.get_by(OAuthConfig, tenant_id: tenant_id)
+
+  def upsert_oauth_config(tenant_id, attrs) do
+    existing = get_oauth_config(tenant_id)
+
+    attrs =
+      attrs
+      |> normalize_oauth_attrs()
+      |> Map.put(:tenant_id, tenant_id)
+      |> Map.update(:bot_scopes, default_scopes(), &default_if_blank(&1, default_scopes()))
+      |> maybe_preserve_client_secret(existing)
+
+    (existing || %OAuthConfig{})
+    |> OAuthConfig.changeset(attrs)
+    |> upsert_config(existing)
   end
 
   def upsert_oauth_installation(tenant_id, oauth_body) do
@@ -86,6 +103,35 @@ defmodule AndnativeAi.Slack.Installations do
     valid_secret?(System.get_env("SLACK_APP_TOKEN", ""))
   end
 
+  def oauth_settings(tenant_id) do
+    case get_oauth_config(tenant_id) do
+      %OAuthConfig{} = config ->
+        %{
+          source: :database,
+          client_id: config.client_id || "",
+          client_secret: config.client_secret || "",
+          client_secret_set?: configured?(config.client_secret || ""),
+          redirect_uri: default_if_blank(config.redirect_uri, env_redirect_uri()),
+          bot_scopes: default_if_blank(config.bot_scopes, default_scopes())
+        }
+
+      nil ->
+        %{
+          source: :env,
+          client_id: System.get_env("SLACK_CLIENT_ID", ""),
+          client_secret: System.get_env("SLACK_CLIENT_SECRET", ""),
+          client_secret_set?: configured?(System.get_env("SLACK_CLIENT_SECRET", "")),
+          redirect_uri: env_redirect_uri(),
+          bot_scopes: default_scopes()
+        }
+    end
+  end
+
+  def oauth_configured?(tenant_id) do
+    settings = oauth_settings(tenant_id)
+    configured?(settings.client_id) and configured?(settings.client_secret)
+  end
+
   def oauth_configured? do
     configured?(System.get_env("SLACK_CLIENT_ID", "")) and
       configured?(System.get_env("SLACK_CLIENT_SECRET", ""))
@@ -98,9 +144,19 @@ defmodule AndnativeAi.Slack.Installations do
     )
   end
 
-  def redirect_uri do
-    System.get_env("SLACK_REDIRECT_URI", "")
+  def redirect_uri(tenant_id) do
+    tenant_id
+    |> oauth_settings()
+    |> Map.fetch!(:redirect_uri)
   end
+
+  def redirect_uri do
+    env_redirect_uri()
+  end
+
+  def client_id(tenant_id), do: tenant_id |> oauth_settings() |> Map.fetch!(:client_id)
+  def client_secret(tenant_id), do: tenant_id |> oauth_settings() |> Map.fetch!(:client_secret)
+  def bot_scopes(tenant_id), do: tenant_id |> oauth_settings() |> Map.fetch!(:bot_scopes)
 
   defp attrs_from_oauth(tenant_id, body) do
     team = Map.get(body, "team") || %{}
@@ -122,6 +178,49 @@ defmodule AndnativeAi.Slack.Installations do
       deleted_at: nil
     }
   end
+
+  defp upsert_config(changeset, nil), do: Repo.insert(changeset)
+  defp upsert_config(changeset, %OAuthConfig{}), do: Repo.update(changeset)
+
+  defp normalize_oauth_attrs(attrs) do
+    attrs
+    |> Enum.reduce(%{}, fn
+      {key, value}, acc when key in ["client_id", :client_id] ->
+        Map.put(acc, :client_id, normalize_string(value))
+
+      {key, value}, acc when key in ["client_secret", :client_secret] ->
+        Map.put(acc, :client_secret, normalize_string(value))
+
+      {key, value}, acc when key in ["redirect_uri", :redirect_uri] ->
+        Map.put(acc, :redirect_uri, normalize_string(value))
+
+      {key, value}, acc when key in ["bot_scopes", :bot_scopes] ->
+        Map.put(acc, :bot_scopes, normalize_string(value))
+
+      _other, acc ->
+        acc
+    end)
+  end
+
+  defp maybe_preserve_client_secret(attrs, %OAuthConfig{} = existing) do
+    if blank?(Map.get(attrs, :client_secret)) do
+      Map.put(attrs, :client_secret, existing.client_secret)
+    else
+      attrs
+    end
+  end
+
+  defp maybe_preserve_client_secret(attrs, nil), do: attrs
+
+  defp default_if_blank(value, default) do
+    if blank?(value), do: default, else: value
+  end
+
+  defp normalize_string(value) when is_binary(value), do: String.trim(value)
+  defp normalize_string(nil), do: ""
+  defp normalize_string(value), do: value
+
+  defp blank?(value), do: value in [nil, ""]
 
   defp merge_installation_opts(base_opts, %Installation{} = installation) do
     base_opts
@@ -161,4 +260,6 @@ defmodule AndnativeAi.Slack.Installations do
   defp configured?(value), do: value != "" and not String.contains?(value, "replace-me")
 
   defp valid_secret?(value), do: configured?(value)
+
+  defp env_redirect_uri, do: System.get_env("SLACK_REDIRECT_URI", "")
 end

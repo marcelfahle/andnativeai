@@ -83,6 +83,41 @@ defmodule AndnativeAi.Slack.InstallationsTest do
              )
   end
 
+  test "OAuth app config is tenant-scoped and preserves a blank saved secret" do
+    tenant = tenant_fixture("slack-app-config")
+
+    assert {:ok, config} =
+             Installations.upsert_oauth_config(tenant.id, %{
+               "client_id" => "client-1",
+               "client_secret" => "secret-1",
+               "redirect_uri" => "https://app.example.com/slack/oauth/callback",
+               "bot_scopes" => "app_mentions:read,chat:write"
+             })
+
+    assert config.client_id == "client-1"
+    assert Installations.oauth_configured?(tenant.id)
+
+    settings = Installations.oauth_settings(tenant.id)
+    assert settings.source == :database
+    assert settings.client_id == "client-1"
+    assert settings.client_secret == "secret-1"
+    assert settings.client_secret_set?
+    assert settings.bot_scopes == "app_mentions:read,chat:write"
+
+    assert {:ok, updated} =
+             Installations.upsert_oauth_config(tenant.id, %{
+               "client_id" => "client-2",
+               "client_secret" => "",
+               "redirect_uri" => "https://app.example.com/slack/oauth/callback",
+               "bot_scopes" => "channels:read,chat:write"
+             })
+
+    assert updated.id == config.id
+    assert updated.client_id == "client-2"
+    assert updated.client_secret == "secret-1"
+    assert updated.bot_scopes == "channels:read,chat:write"
+  end
+
   defmodule FakeClient do
   end
 

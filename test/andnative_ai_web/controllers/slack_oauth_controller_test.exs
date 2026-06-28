@@ -91,6 +91,40 @@ defmodule AndnativeAiWeb.SlackOAuthControllerTest do
     assert Installations.latest_installation(tenant.id) == nil
   end
 
+  test "install can use OAuth app settings saved in the database", %{conn: conn} do
+    System.delete_env("SLACK_CLIENT_ID")
+    System.delete_env("SLACK_CLIENT_SECRET")
+    System.delete_env("SLACK_REDIRECT_URI")
+
+    tenant = Memory.ensure_demo_tenant!()
+
+    {:ok, _config} =
+      Installations.upsert_oauth_config(tenant.id, %{
+        "client_id" => "db.client",
+        "client_secret" => "db-secret",
+        "redirect_uri" => "https://db.example.com/slack/oauth/callback",
+        "bot_scopes" => "channels:read,chat:write"
+      })
+
+    conn =
+      conn
+      |> init_test_session(%{})
+      |> get(~p"/slack/install")
+
+    assert redirected_to(conn) =~ "https://slack.com/oauth/v2/authorize?"
+
+    query =
+      conn
+      |> redirected_to()
+      |> URI.parse()
+      |> Map.fetch!(:query)
+      |> URI.decode_query()
+
+    assert query["client_id"] == "db.client"
+    assert query["redirect_uri"] == "https://db.example.com/slack/oauth/callback"
+    assert query["scope"] == "channels:read,chat:write"
+  end
+
   test "install reports missing OAuth config", %{conn: conn} do
     System.delete_env("SLACK_CLIENT_SECRET")
 
@@ -116,6 +150,23 @@ defmodule AndnativeAiWeb.SlackOAuthControllerTest do
          "bot_user_id" => "UBOT",
          "app_id" => "A123",
          "team" => %{"id" => "T123", "name" => "Acme"},
+         "authed_user" => %{"id" => "UINSTALLER"}
+       }}
+    end
+
+    def oauth_v2_access(
+          "db.client",
+          "db-secret",
+          "valid-code",
+          "https://db.example.com/slack/oauth/callback"
+        ) do
+      {:ok,
+       %{
+         "access_token" => "xoxb-db",
+         "scope" => "channels:read,chat:write",
+         "bot_user_id" => "UDBBOT",
+         "app_id" => "ADB",
+         "team" => %{"id" => "TDB", "name" => "Database Config"},
          "authed_user" => %{"id" => "UINSTALLER"}
        }}
     end

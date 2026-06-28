@@ -123,9 +123,9 @@ changed scopes, redirect URLs, or events after installing, click
 
 Copy the **Bot User OAuth Token**. It starts with `xoxb-`.
 
-This token is the manual `.env` fallback `SLACK_BOT_TOKEN`. The preferred
-demo flow is now `/admin/slack` -> **Connect Slack**, which exchanges the OAuth
-code and stores the workspace bot token in Postgres.
+This token is the manual `.env` fallback `SLACK_BOT_TOKEN`. The preferred demo
+flow is now `/admin/slack` -> save the OAuth app settings -> **Connect Slack**,
+which exchanges the OAuth code and stores the workspace bot token in Postgres.
 
 ## Environment Variables
 
@@ -147,9 +147,14 @@ SLACK_BOT_SCOPES=app_mentions:read,channels:history,channels:read,chat:write
 support, but the current Socket Mode listener does not use it.
 
 `SLACK_APP_TOKEN` remains required because Socket Mode uses the app-level
-`xapp-` token to open the WebSocket. `SLACK_BOT_TOKEN` and
-`SLACK_BOT_USER_ID` are kept as a local/manual fallback. OAuth installs store
-the active workspace bot token and bot user ID in `slack_installations`.
+`xapp-` token to open the WebSocket. `SLACK_CLIENT_ID`,
+`SLACK_CLIENT_SECRET`, `SLACK_REDIRECT_URI`, and `SLACK_BOT_SCOPES` can be set
+in `.env` or saved in `/admin/slack` for the demo tenant. `SLACK_BOT_TOKEN`
+and `SLACK_BOT_USER_ID` are kept as a local/manual fallback. OAuth installs
+store the active workspace bot token and bot user ID in `slack_installations`.
+
+Current PoC caveat: saved OAuth app settings are plaintext in Postgres.
+Production needs encrypted secret storage.
 
 To get `SLACK_BOT_USER_ID`, run:
 
@@ -183,13 +188,14 @@ ingested after the bot has joined the channel.
 
 ## OAuth Install Flow
 
-1. Ensure `.env` has `SLACK_APP_TOKEN`, `SLACK_CLIENT_ID`,
-   `SLACK_CLIENT_SECRET`, and `SLACK_REDIRECT_URI`.
+1. Ensure `.env` has `SLACK_APP_TOKEN`.
 2. Start `control-panel` and `slack-listener`.
 3. Open `/admin/slack`.
-4. Click **Connect Slack**.
-5. Approve the app in Slack.
-6. Confirm `/admin/slack` shows the installed workspace.
+4. Save the Slack app **Client ID**, **Client Secret**, Redirect URI, and bot
+   scopes in **OAuth app settings**.
+5. Click **Connect Slack**.
+6. Approve the app in Slack.
+7. Confirm `/admin/slack` shows the installed workspace.
 
 Socket Mode receives events for the Slack app. The listener extracts the event
 `team_id`, loads the matching `slack_installations` row, and passes that
@@ -248,8 +254,8 @@ docker compose exec -T control-panel mix run scripts/reset-demo-memory.exs
 
 - `Slack Socket Mode listener disabled`: `.env` is missing `SLACK_APP_TOKEN`
   or it still contains `replace-me`.
-- **Connect Slack** is disabled: `.env` is missing `SLACK_CLIENT_ID` or
-  `SLACK_CLIENT_SECRET`.
+- **Connect Slack** is disabled: save Client ID and Client Secret in
+  `/admin/slack`, or set `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` in `.env`.
 - OAuth returns `bad_redirect_uri`: add the exact `SLACK_REDIRECT_URI` value in
   the Slack app's **OAuth & Permissions** redirect URLs.
 - `invalid_auth` from Slack: confirm you used the `xapp-` token for
