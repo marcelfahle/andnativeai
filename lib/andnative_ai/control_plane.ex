@@ -129,6 +129,7 @@ defmodule AndnativeAi.ControlPlane do
 
   defp audit_event(event) do
     display = AuditEventKinds.display(event.event_kind)
+    {citation_url, citation_label} = citation(event.citation_url)
 
     %{
       id: event.id,
@@ -141,7 +142,8 @@ defmodule AndnativeAi.ControlPlane do
       status: event.status,
       summary: event.summary,
       request_id: event.request_id,
-      citation_url: event.citation_url,
+      citation_url: citation_url,
+      citation_label: citation_label,
       source_name: source_name(event),
       occurred_at: event.occurred_at
     }
@@ -149,6 +151,22 @@ defmodule AndnativeAi.ControlPlane do
 
   defp source_name(%{source: %{name: name}}) when is_binary(name), do: name
   defp source_name(_event), do: nil
+
+  defp citation(url) when is_binary(url) and url != "" do
+    if web_url?(url), do: {url, nil}, else: {nil, "Source recorded"}
+  end
+
+  defp citation(_url), do: {nil, nil}
+
+  defp web_url?(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) ->
+        host != ""
+
+      _other ->
+        false
+    end
+  end
 
   defp slack_listener_state(0) do
     if Installations.env_fallback_configured?(), do: "env fallback", else: "disabled"
