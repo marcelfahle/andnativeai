@@ -141,3 +141,18 @@ Current caveat:
 - Bot tokens and saved Slack OAuth Client Secrets are plaintext in Postgres for
   the PoC. Production needs encrypted secret storage and uninstall/revocation
   handling.
+
+## DEC-012: Control Plane Separates Live State From Demo Runtime Trust Events
+
+The prospect-facing control plane uses live tenant data for agents, sources,
+Slack installs, memory chunks, and source lifecycle events. Runtime trust steps
+that are not yet persisted, such as policy checks, routing decisions, model
+calls, citation attachment, and HITL pauses, are shown as explicit demo fallback
+events.
+
+Why:
+
+- Prospect demos need the governed-runtime story without pretending a full audit
+  event store already exists.
+- The event shape gives a clear future home for persisted audit rows.
+- Source lifecycle evidence remains tied to real `memory_sources` state.

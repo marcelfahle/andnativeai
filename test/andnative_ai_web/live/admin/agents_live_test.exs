@@ -59,6 +59,7 @@ defmodule AndnativeAiWeb.Admin.AgentsLiveTest do
   test "admin navigation exposes sources, Slack, and runtime pages", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/admin/agents")
 
+    assert has_element?(view, "a[href='/admin/control-plane']")
     assert has_element?(view, "a[href='/admin/sources']")
     assert has_element?(view, "a[href='/admin/slack']")
     assert has_element?(view, "a[href='/admin/runtime']")

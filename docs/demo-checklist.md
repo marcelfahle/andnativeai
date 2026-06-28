@@ -30,7 +30,9 @@ like `/archives/C0123456789`.
 
 ## Setup
 
-- Create an OpenClaw agent in Agents.
+- Open `http://localhost:4000/admin/control-plane` to confirm the appliance
+  dashboard loads with live-data and demo-fallback runtime trust events.
+- Create one primary OpenClaw agent in Agents. See `docs/agent-setup.md`.
 - Optional behavior demo: set Identity to
   `Answer from governed memory with concise citations. Start every conversation with "Yo!"`
   and save.
