@@ -81,7 +81,8 @@ jobs:
           docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml up -d postgres redis minio
           docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml exec -T \
             -e NEW_POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            postgres sh -lc 'psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER USER postgres WITH PASSWORD '\''$NEW_POSTGRES_PASSWORD'\'';"'
+            postgres sh -lc 'psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER USER postgres WITH PASSWORD '\''$NEW_POSTGRES_PASSWORD'\'';"' \
+            </dev/null
 
           docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml up -d --build
           docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml up -d --force-recreate control-panel slack-listener
@@ -110,4 +111,6 @@ jobs:
               sleep 2
             done
           done
+
+          docker exec andnative-control-panel ./bin/andnative_ai rpc "AndnativeAi.Accounts.list_users()"
           REMOTE

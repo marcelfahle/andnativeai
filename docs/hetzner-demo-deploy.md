@@ -131,7 +131,8 @@ set +a
 docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml up -d postgres
 docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml exec -T \
   -e NEW_POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-  postgres sh -lc 'psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER USER postgres WITH PASSWORD '\''$NEW_POSTGRES_PASSWORD'\'';"'
+  postgres sh -lc 'psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER USER postgres WITH PASSWORD '\''$NEW_POSTGRES_PASSWORD'\'';"' \
+  </dev/null
 ```
 
 ### One-time database preservation
