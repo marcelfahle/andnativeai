@@ -173,20 +173,41 @@ Password reset and invitations send email via Swoosh:
 
 - **dev / test:** a local/preview adapter — no real email is sent; messages are
   captured in memory.
-- **prod:** safe by default. With no `MAILER_ADAPTER` set, prod falls back to the
-  local adapter (nothing is sent) so an unconfigured deploy never crashes. To
-  send real mail, set in `/opt/andnativeai/.env`:
+- **prod:** safe by default. With nothing configured, prod falls back to the
+  local adapter (nothing is sent) so an unconfigured deploy never crashes.
 
-  ```sh
-  MAILER_ADAPTER=smtp
-  SMTP_RELAY=smtp.your-provider.com
-  SMTP_USERNAME=...
-  SMTP_PASSWORD=...
-  SMTP_PORT=587
-  MAILER_FROM=no-reply@andnativeai.marcelfahle.net   # optional; defaults to no-reply@<host>
-  ```
+**Recommended: Resend.** Set `RESEND_API_KEY` and it is used automatically (it
+takes precedence over SMTP). Setup:
 
-  No secret is committed; everything comes from the environment.
+1. Create an API key in the Resend dashboard (it starts with `re_`).
+2. Verify your sending domain in Resend (the `MAILER_FROM` address must be on a
+   verified domain). For a quick test you can send from `onboarding@resend.dev`
+   — but that sandbox sender only delivers to your own Resend account email.
+3. Set in `/opt/andnativeai/.env`:
+
+   ```sh
+   RESEND_API_KEY=re_...
+   MAILER_FROM=no-reply@andnativeai.marcelfahle.net   # a Resend-verified sender
+   ```
+
+**Both are required:** `RESEND_API_KEY` authenticates, and `MAILER_FROM` must be
+a verified Resend sender — sends from an unverified domain are rejected. No
+`MAILER_ADAPTER` is needed; the next deploy delivers via Resend.
+
+**Alternative: SMTP.** Instead of Resend, set `MAILER_ADAPTER=smtp` plus the
+`SMTP_*` vars:
+
+```sh
+MAILER_ADAPTER=smtp
+SMTP_RELAY=smtp.your-provider.com
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+SMTP_PORT=587
+MAILER_FROM=no-reply@andnativeai.marcelfahle.net   # optional; defaults to no-reply@<host>
+```
+
+No secret is committed; `RESEND_API_KEY` and the SMTP credentials all come from
+the environment.
 
 ### Local setup
 
