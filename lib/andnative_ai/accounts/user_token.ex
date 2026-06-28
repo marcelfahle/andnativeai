@@ -102,4 +102,7 @@ defmodule AndnativeAi.Accounts.UserToken do
 
   defp days_for_context("reset_password"), do: @reset_password_validity_in_days
   defp days_for_context("invite"), do: @invite_validity_in_days
+
+  defp days_for_context(context),
+    do: raise(ArgumentError, "unknown email token context: #{inspect(context)}")
 end

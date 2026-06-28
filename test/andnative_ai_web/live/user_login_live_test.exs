@@ -81,6 +81,18 @@ defmodule AndnativeAiWeb.UserLoginLiveTest do
       conn = post(build_conn(), ~p"/login", %{"unexpected" => "shape"})
       assert redirected_to(conn) == ~p"/login"
     end
+
+    test "re-logs in with a success message after a password change", %{conn: conn} do
+      user = user_fixture()
+
+      conn =
+        post(conn, ~p"/login?_action=password_updated", %{
+          "user" => %{"email" => user.email, "password" => valid_user_password()}
+        })
+
+      assert get_session(conn, :user_token)
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Password updated"
+    end
   end
 
   describe "session revocation (R4)" do

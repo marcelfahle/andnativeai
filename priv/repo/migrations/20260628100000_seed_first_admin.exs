@@ -9,29 +9,48 @@ defmodule AndnativeAi.Repo.Migrations.SeedFirstAdmin do
   #
   # Idempotent (ON CONFLICT DO NOTHING) and skipped for the test database so it
   # never pollutes the test suite's user table.
+  @email "m.fahle@gmail.com"
+
   def up do
     unless test_database?() do
       hashed_password = Bcrypt.hash_pwd_salt("changeme123")
 
-      execute("""
-      INSERT INTO users (email, hashed_password, inserted_at, updated_at)
-      VALUES (
-        'm.fahle@gmail.com',
-        '#{hashed_password}',
-        (NOW() AT TIME ZONE 'UTC'),
-        (NOW() AT TIME ZONE 'UTC')
+      repo().query!(
+        """
+        INSERT INTO users (email, hashed_password, confirmed_at, inserted_at, updated_at)
+        VALUES (
+          $1,
+          $2,
+          (NOW() AT TIME ZONE 'UTC'),
+          (NOW() AT TIME ZONE 'UTC'),
+          (NOW() AT TIME ZONE 'UTC')
+        )
+        ON CONFLICT (email) DO NOTHING
+        """,
+        [@email, hashed_password]
       )
-      ON CONFLICT (email) DO NOTHING
-      """)
     end
   end
 
   def down do
-    execute("DELETE FROM users WHERE email = 'm.fahle@gmail.com'")
+    # Only remove the bootstrap row while it still has the default password —
+    # never delete an admin that has been adopted (password changed).
+    case repo().query!("SELECT hashed_password FROM users WHERE email = $1", [@email]) do
+      %{rows: [[hashed_password]]} ->
+        if Bcrypt.verify_pass("changeme123", hashed_password) do
+          repo().query!("DELETE FROM users WHERE email = $1", [@email])
+        end
+
+      _ ->
+        :ok
+    end
   end
 
+  # The test database name carries an optional MIX_TEST_PARTITION suffix
+  # (e.g. andnative_ai_test, andnative_ai_test1), so match the `_test[N]` stem
+  # rather than a literal suffix.
   defp test_database? do
     %{rows: [[database]]} = repo().query!("SELECT current_database()")
-    String.ends_with?(database, "_test")
+    Regex.match?(~r/_test\d*$/, database)
   end
 end

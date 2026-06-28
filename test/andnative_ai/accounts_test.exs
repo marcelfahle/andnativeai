@@ -219,6 +219,18 @@ defmodule AndnativeAi.AccountsTest do
       assert Accounts.get_user_by_email_and_password(email, "the chosen password")
       refute Accounts.get_user_by_invite_token(token)
     end
+
+    test "tokens are context-isolated (a reset token is not an invite token)" do
+      user = user_fixture()
+
+      reset_token =
+        extract_user_token(fn url ->
+          Accounts.deliver_user_reset_password_instructions(user, url)
+        end)
+
+      refute Accounts.get_user_by_invite_token(reset_token)
+      assert Accounts.get_user_by_reset_password_token(reset_token).id == user.id
+    end
   end
 
   describe "delete_user/1" do
@@ -235,6 +247,29 @@ defmodule AndnativeAi.AccountsTest do
       assert {:ok, _} = Accounts.delete_user(remove)
       refute Accounts.get_user_by_email(remove.email)
       assert Accounts.get_user_by_email(keep.email)
+    end
+
+    test "ignores unconfirmed invite stubs when guarding the last active user" do
+      admin = user_fixture()
+
+      extract_user_token(fn url ->
+        {:ok, _user} = Accounts.invite_user(unique_user_email(), url)
+      end)
+
+      # A dangling invite stub must not let the only active admin be deleted.
+      assert {:error, :last_user} = Accounts.delete_user(admin)
+    end
+
+    test "always allows deleting an unconfirmed invite stub" do
+      _admin = user_fixture()
+
+      stub_token =
+        extract_user_token(fn url ->
+          {:ok, _user} = Accounts.invite_user(unique_user_email(), url)
+        end)
+
+      stub = Accounts.get_user_by_invite_token(stub_token)
+      assert {:ok, _} = Accounts.delete_user(stub)
     end
   end
 end

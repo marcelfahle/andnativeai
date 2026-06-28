@@ -9,8 +9,9 @@ defmodule AndnativeAiWeb.UserResetPasswordLiveTest do
 
   describe "forgot password page" do
     test "renders the email form", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/users/reset-password")
-      assert html =~ "Forgot your password"
+      {:ok, lv, _html} = live(conn, ~p"/users/reset-password")
+      assert has_element?(lv, "h1", "Forgot your password?")
+      assert has_element?(lv, "#forgot_password_form")
     end
 
     test "sends a reset email for a known address and shows a generic message", %{conn: conn} do

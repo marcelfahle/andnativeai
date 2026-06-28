@@ -17,12 +17,11 @@ defmodule AndnativeAiWeb.Admin.UserInviteLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/admin/users/invite")
       email = unique_user_email()
 
-      result =
-        lv
-        |> form("#invite_form", user: %{email: email})
-        |> render_submit()
+      lv
+      |> form("#invite_form", user: %{email: email})
+      |> render_submit()
 
-      assert result =~ "Invitation sent"
+      assert has_element?(lv, "#flash-group", "Invitation sent")
       assert_email_sent()
       assert Accounts.get_user_by_email(email)
     end
@@ -32,12 +31,11 @@ defmodule AndnativeAiWeb.Admin.UserInviteLiveTest do
       existing = user_fixture()
       {:ok, lv, _html} = live(conn, ~p"/admin/users/invite")
 
-      result =
-        lv
-        |> form("#invite_form", user: %{email: existing.email})
-        |> render_submit()
+      lv
+      |> form("#invite_form", user: %{email: existing.email})
+      |> render_submit()
 
-      assert result =~ "has already been taken"
+      assert has_element?(lv, "#invite_form", "has already been taken")
     end
   end
 

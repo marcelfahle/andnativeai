@@ -40,8 +40,13 @@ defmodule AndnativeAi.Accounts do
   Registers a user from the given attributes (`:email`, `:password`).
   """
   def register_user(attrs) do
+    now = DateTime.truncate(DateTime.utc_now(), :second)
+
+    # Directly-registered users (seeds, env provisioning) are active immediately;
+    # only invite stubs stay unconfirmed until accepted.
     %User{}
     |> User.registration_changeset(attrs)
+    |> Ecto.Changeset.put_change(:confirmed_at, now)
     |> Repo.insert()
   end
 
@@ -85,21 +90,15 @@ defmodule AndnativeAi.Accounts do
       |> User.password_changeset(attrs)
       |> User.validate_current_password(current_password)
 
-    Ecto.Multi.new()
-    |> Ecto.Multi.update(:user, changeset)
-    |> Ecto.Multi.delete_all(:tokens, UserToken.by_user_and_contexts_query(user, ["session"]))
-    |> Repo.transaction()
-    |> case do
-      {:ok, %{user: user}} -> {:ok, user}
-      {:error, :user, changeset, _} -> {:error, changeset}
-    end
+    update_password_multi(user, changeset, ["session"])
   end
 
   @doc """
-  Returns a changeset for tracking password changes in a form.
+  Returns a changeset for tracking password changes in a form. Does not hash, so
+  the plaintext is retained for the form (and the settings re-login).
   """
   def change_user_password(user, attrs \\ %{}) do
-    User.password_changeset(user, attrs)
+    User.password_changeset(user, attrs, hash_password: false)
   end
 
   ## Reset password
@@ -119,29 +118,18 @@ defmodule AndnativeAi.Accounts do
   Gets the user for a valid reset-password token, or `nil`.
   """
   def get_user_by_reset_password_token(token) do
-    with {:ok, query} <- UserToken.verify_email_token_query(token, "reset_password"),
-         %User{} = user <- Repo.one(query) do
-      user
-    else
-      _ -> nil
-    end
+    get_user_by_email_token(token, "reset_password")
   end
 
   @doc """
   Resets the user's password and invalidates the user's reset and session tokens.
   """
   def reset_user_password(user, attrs) do
-    Ecto.Multi.new()
-    |> Ecto.Multi.update(:user, User.password_changeset(user, attrs))
-    |> Ecto.Multi.delete_all(
-      :tokens,
-      UserToken.by_user_and_contexts_query(user, ["reset_password", "session"])
+    update_password_multi(
+      user,
+      User.password_changeset(user, attrs),
+      ["reset_password", "session"]
     )
-    |> Repo.transaction()
-    |> case do
-      {:ok, %{user: user}} -> {:ok, user}
-      {:error, :user, changeset, _} -> {:error, changeset}
-    end
   end
 
   ## Invitations
@@ -154,12 +142,25 @@ defmodule AndnativeAi.Accounts do
   def invite_user(email, invite_url_fun) when is_function(invite_url_fun, 1) do
     random_password = Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
 
-    case register_user(%{email: email, password: random_password}) do
+    # Insert directly (not register_user) so the invite stub stays unconfirmed
+    # (confirmed_at: nil) until the invitee accepts.
+    changeset = User.registration_changeset(%User{}, %{email: email, password: random_password})
+
+    case Repo.insert(changeset) do
       {:ok, user} ->
         {encoded_token, user_token} = UserToken.build_email_token(user, "invite")
         Repo.insert!(user_token)
-        {:ok, _email} = UserNotifier.deliver_invitation(user, invite_url_fun.(encoded_token))
-        {:ok, user}
+
+        case UserNotifier.deliver_invitation(user, invite_url_fun.(encoded_token)) do
+          {:ok, _email} ->
+            {:ok, user}
+
+          {:error, reason} ->
+            # A transient mail failure must not leave an orphaned account; delete
+            # the stub (cascades to its tokens) and report the failure.
+            Repo.delete(user)
+            {:error, reason}
+        end
 
       {:error, changeset} ->
         {:error, changeset}
@@ -170,12 +171,7 @@ defmodule AndnativeAi.Accounts do
   Gets the user for a valid invite token, or `nil`.
   """
   def get_user_by_invite_token(token) do
-    with {:ok, query} <- UserToken.verify_email_token_query(token, "invite"),
-         %User{} = user <- Repo.one(query) do
-      user
-    else
-      _ -> nil
-    end
+    get_user_by_email_token(token, "invite")
   end
 
   @doc """
@@ -190,17 +186,7 @@ defmodule AndnativeAi.Accounts do
       |> User.password_changeset(attrs)
       |> Ecto.Changeset.put_change(:confirmed_at, now)
 
-    Ecto.Multi.new()
-    |> Ecto.Multi.update(:user, changeset)
-    |> Ecto.Multi.delete_all(
-      :tokens,
-      UserToken.by_user_and_contexts_query(user, ["invite", "session"])
-    )
-    |> Repo.transaction()
-    |> case do
-      {:ok, %{user: user}} -> {:ok, user}
-      {:error, :user, changeset, _} -> {:error, changeset}
-    end
+    update_password_multi(user, changeset, ["invite", "session"])
   end
 
   ## User administration
@@ -209,11 +195,44 @@ defmodule AndnativeAi.Accounts do
   Deletes a user, refusing to remove the final remaining user so the system can
   never be locked out.
   """
+  # An unconfirmed invite stub can always be removed — it can never be the last
+  # loginable admin.
+  def delete_user(%User{confirmed_at: nil} = user) do
+    Repo.delete(user)
+  end
+
   def delete_user(%User{} = user) do
-    if Repo.aggregate(User, :count) <= 1 do
+    active_count = Repo.aggregate(from(u in User, where: not is_nil(u.confirmed_at)), :count)
+
+    if active_count <= 1 do
       {:error, :last_user}
     else
       Repo.delete(user)
+    end
+  end
+
+  ## Internal helpers
+
+  defp get_user_by_email_token(token, context) do
+    with {:ok, query} <- UserToken.verify_email_token_query(token, context),
+         %User{} = user <- Repo.one(query) do
+      user
+    else
+      _ -> nil
+    end
+  end
+
+  defp update_password_multi(user, changeset, token_contexts) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.update(:user, changeset)
+    |> Ecto.Multi.delete_all(
+      :tokens,
+      UserToken.by_user_and_contexts_query(user, token_contexts)
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{user: user}} -> {:ok, user}
+      {:error, :user, changeset, _} -> {:error, changeset}
     end
   end
 end
