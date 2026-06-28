@@ -3,7 +3,9 @@
 ## Fresh Start
 
 - Copy `.env.example` to `.env`.
-- Set Slack tokens if running the live Slack smoke test.
+- Set `SLACK_APP_TOKEN` for Socket Mode if running live Slack locally.
+- Configure Slack OAuth in `/admin/slack`, or set fallback
+  `SLACK_BOT_TOKEN` and `SLACK_BOT_USER_ID` for manual local demos.
 - Run `docker compose up --build`.
 - Open `http://localhost:4000/admin/agents`.
 

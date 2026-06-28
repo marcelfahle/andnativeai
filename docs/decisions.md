@@ -156,3 +156,22 @@ Why:
   event store already exists.
 - The event shape gives a clear future home for persisted audit rows.
 - Source lifecycle evidence remains tied to real `memory_sources` state.
+
+## DEC-013: Main Auto-Deploys To The Hetzner Demo
+
+The GitHub default branch is `main`. Pushes to `main` run the `Deploy Main`
+GitHub Actions workflow, which rsyncs application files to `/opt/andnativeai`
+and recreates the app containers with Docker Compose.
+
+Why:
+
+- The demo server should reflect merged work without a manual SSH deploy.
+- Deploy history should be visible in GitHub Actions.
+- The server still owns runtime state, secrets, generated assets, and
+  persistent data.
+
+Implication:
+
+- Deploy sync excludes `.env`, `var/`, `_build`, `deps`, and generated
+  `priv/static/assets`.
+- Manual rsync deploy remains a fallback, not the normal path.

@@ -2,8 +2,8 @@
 
 This repository contains the smallest useful proof for an &native.ai governed
 memory appliance: a Phoenix/LiveView control panel, Postgres + pgvector memory
-store, Redis, MinIO raw-source storage, and placeholder services for Slack
-ingestion, memory service, and the OpenClaw gateway.
+store, filesystem-backed raw source storage, Slack Socket Mode ingestion, and
+OpenClaw-shaped runtime answering.
 
 ## First Run
 
@@ -36,28 +36,30 @@ Set `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`, and
 - `postgres`: pgvector-enabled Postgres with host-mounted state in
   `./var/postgres`.
 - `redis`: local queue/cache service with state in `./var/redis`.
-- `minio`: raw artifact object storage on host ports 59000 and 59001.
+- `minio`: placeholder object storage on host ports 59000 and 59001.
 - `memory-service`: placeholder process for the external memory API worker.
-- `slack-listener`: placeholder process for Socket Mode Slack ingestion.
+- `slack-listener`: Socket Mode Slack ingestion and mention responder.
 - `openclaw-gateway`: placeholder process for OpenClaw runtime integration.
 
 Host-mounted PoC data lives under `./var/`, which is intentionally gitignored.
+Uploaded document files are stored under `RAW_SOURCES_PATH`, defaulting to
+`./var/sources`.
 
 Compose maps Postgres to host port 55432 by default so it can run alongside a
 local Postgres on 5432. Containers still use `postgres:5432` internally.
 
 ## Required Secrets
 
-The PoC can boot without real external credentials, but Slack and model-backed
-flows need these values in `.env`:
+The PoC can boot without real external credentials. Slack and model-backed
+flows use these values:
 
-- `SLACK_BOT_TOKEN`
-- `SLACK_APP_TOKEN`
-- `SLACK_CLIENT_ID`
-- `SLACK_CLIENT_SECRET`
-- `SLACK_REDIRECT_URI`
-- `SLACK_SIGNING_SECRET`
-- `SLACK_BOT_USER_ID`
+- `SLACK_APP_TOKEN`: required for Socket Mode.
+- `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_REDIRECT_URI`,
+  `SLACK_BOT_SCOPES`: set in `.env` or saved in `/admin/slack` for OAuth.
+- `SLACK_BOT_TOKEN` and `SLACK_BOT_USER_ID`: manual fallback for local demos
+  and scripts.
+- `SLACK_SIGNING_SECRET`: reserved for future HTTP Slack endpoints; not used by
+  current Socket Mode.
 - `OPENAI_API_KEY` or a future provider-specific LLM/embedding key
 - `OPENCLAW_GATEWAY_URL` and `OPENCLAW_WORKSPACE_PATH`
 
@@ -67,7 +69,7 @@ See `docs/slack-app.md` for the Socket Mode app setup.
 ## Demo
 
 - `docs/demo-checklist.md` has the repeatable end-to-end script.
-- `docs/slack-smoke-test.md` has the manual Slack verification.
+- `docs/slack-smoke-test.md` has the short local Slack smoke test.
 - `docs/slack-oauth-testing.md` explains how to test Slack OAuth onboarding.
 - `docs/agent-setup.md` explains the current agent setup and multiple-agent
   rules.

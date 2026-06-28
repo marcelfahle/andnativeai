@@ -9,7 +9,9 @@ tenant is created by `AndnativeAi.Memory.ensure_demo_tenant!/0` with slug
 - `control-panel`: Phoenix/LiveView admin UI and API.
 - `slack-listener`: Slack Socket Mode listener.
 - `postgres`: pgvector-backed memory store.
-- `redis` and `minio`: local placeholders for queue/cache and raw artifacts.
+- `redis`: local queue/cache placeholder.
+- `minio`: local object-storage placeholder. Current document upload stores
+  raw files on disk under `RAW_SOURCES_PATH`.
 - `memory-service` and `openclaw-gateway`: placeholder containers for future
   service split.
 
@@ -165,9 +167,11 @@ docker compose config --quiet
 - Slack backfill only sees the most recent `SLACK_HISTORY_LIMIT` messages.
 - Embeddings are deterministic local hashes, not production semantic embeddings.
 - OpenClaw integration is a config/runtime adapter shape, not a full gateway.
-- Admin auth is Caddy basic auth in the demo deploy, not production app auth.
+- Admin auth is still Caddy basic auth in the demo deploy. Phoenix-native app
+  auth is tracked separately in Linear as AAI-18.
 - Slack OAuth app Client Secret and installed bot tokens are plaintext in
   Postgres for the PoC.
+- Deploys from `main` run through GitHub Actions to the Hetzner demo host.
 - No billing, multi-tenant rollout, load testing, or monitoring.
 
 ## Likely Next Work

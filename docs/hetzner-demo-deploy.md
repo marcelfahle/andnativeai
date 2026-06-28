@@ -20,33 +20,9 @@ This deployment shares the importer box but isolates the PoC:
 The importer already owns host port `4000`, so this PoC must not publish host
 port `4000`.
 
-## Deploy Or Update
-
-From local repo:
-
-```sh
-rsync -az --delete \
-  --exclude .git \
-  --exclude .DS_Store \
-  --exclude .env \
-  --exclude _build \
-  --exclude deps \
-  --exclude priv/static/assets \
-  --exclude var \
-  -e "ssh -i ~/.ssh/id_ed25519_mf2024" \
-  ./ root@91.99.49.152:/opt/andnativeai/
-```
-
-On the server:
-
-```sh
-cd /opt/andnativeai/deploy
-docker compose -p andnativeai -f hetzner-demo.compose.yml up -d --build
-```
-
 ## Auto Deploy From Main
 
-GitHub Actions deploys every push to `main`.
+GitHub Actions deploys every push to `main`. This is the normal deploy path.
 
 Workflow:
 
@@ -71,10 +47,34 @@ Server setup:
 - App path: `/opt/andnativeai`
 - User must be able to write app files and run Docker Compose.
 
-Manual fallback remains:
+Manual workflow dispatch:
 
 ```sh
 gh workflow run deploy-main.yml --ref main
+```
+
+## Manual Deploy Or Update
+
+From local repo:
+
+```sh
+rsync -az --delete \
+  --exclude .git \
+  --exclude .DS_Store \
+  --exclude .env \
+  --exclude _build \
+  --exclude deps \
+  --exclude priv/static/assets \
+  --exclude var \
+  -e "ssh -i ~/.ssh/id_ed25519_mf2024" \
+  ./ root@91.99.49.152:/opt/andnativeai/
+```
+
+On the server:
+
+```sh
+cd /opt/andnativeai/deploy
+docker compose -p andnativeai -f hetzner-demo.compose.yml up -d --build
 ```
 
 ## Caddy
