@@ -38,12 +38,6 @@ defmodule AndnativeAi.Runtime.Audit do
     "citation_url" => :citation_url,
     "occurred_at" => :occurred_at
   }
-  @secret_value_patterns [
-    ~r/xox[baprs]-[A-Za-z0-9-]+/,
-    ~r/sk-[A-Za-z0-9_-]+/,
-    ~r/(token|secret|authorization|password)=([^&\s]+)/i,
-    ~r/(token|secret|authorization|password):\s*([^\s,}]+)/i
-  ]
   @max_metadata_string 300
 
   def new_request_id, do: Ecto.UUID.generate()
@@ -152,10 +146,14 @@ defmodule AndnativeAi.Runtime.Audit do
   defp sanitize_metadata_value(value), do: value
 
   defp sanitize_string(value) do
-    Enum.reduce(@secret_value_patterns, value, fn pattern, acc ->
-      Regex.replace(pattern, acc, "[REDACTED]")
-    end)
+    value
+    |> redact(~r/xox[baprs]-[A-Za-z0-9-]+/)
+    |> redact(~r/sk-[A-Za-z0-9_-]+/)
+    |> redact(~r/(token|secret|authorization|password)=([^&\s]+)/i)
+    |> redact(~r/(token|secret|authorization|password):\s*([^\s,}]+)/i)
   end
+
+  defp redact(value, pattern), do: Regex.replace(pattern, value, "[REDACTED]")
 
   defp truncate_string(value) do
     if String.length(value) > @max_metadata_string do
