@@ -9,7 +9,7 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
       <div class="mx-auto max-w-4xl space-y-6">
         <.header>
           Users
-          <:subtitle>Admins with access to the &native.ai control panel.</:subtitle>
+          <:subtitle>Admins with access to the &amp;native.ai control panel.</:subtitle>
           <:actions>
             <.link navigate={~p"/admin/users/invite"} class="btn btn-primary btn-sm">
               <.icon name="hero-user-plus" class="size-4" /> Invite a user
@@ -17,7 +17,7 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
           </:actions>
         </.header>
 
-        <.table id="users" rows={@users}>
+        <.table id="users" rows={@streams.users} row_item={fn {_id, user} -> user end}>
           <:col :let={user} label="Email">{user.email}</:col>
           <:col :let={user} label="Status">
             <span :if={user.confirmed_at} class="badge badge-success badge-sm">Active</span>
@@ -55,50 +55,67 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
   end
 
   def mount(_params, _session, socket) do
-    {:ok, socket |> assign(:page_title, "Users") |> assign_users()}
+    {:ok,
+     socket
+     |> assign(:page_title, "Users")
+     |> stream(:users, Accounts.list_users())}
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    if id == to_string(socket.assigns.current_user.id) do
-      {:noreply, put_flash(socket, :error, "You can't delete your own account.")}
-    else
-      socket =
-        case Accounts.delete_user(Accounts.get_user!(id)) do
-          {:ok, user} ->
-            put_flash(socket, :info, "Deleted #{user.email}.")
+    # Look the user up first (no raise on a stale/crafted id) and compare ids as
+    # integers, so a crafted event can't bypass the self-delete guard. The last
+    # active admin is refused at the context layer.
+    user = Accounts.get_user(id)
 
-          {:error, :last_user} ->
-            put_flash(socket, :error, "Can't delete the last remaining admin.")
-        end
+    socket =
+      cond do
+        is_nil(user) ->
+          put_flash(socket, :error, "That user no longer exists.")
 
-      {:noreply, assign_users(socket)}
-    end
+        user.id == socket.assigns.current_user.id ->
+          put_flash(socket, :error, "You can't delete your own account.")
+
+        true ->
+          case Accounts.delete_user(user) do
+            {:ok, deleted} ->
+              socket
+              |> put_flash(:info, "Deleted #{deleted.email}.")
+              |> stream_delete(:users, deleted)
+
+            {:error, :last_user} ->
+              put_flash(socket, :error, "Can't delete the last remaining admin.")
+
+            {:error, _changeset} ->
+              put_flash(socket, :error, "Could not delete that user.")
+          end
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("resend", %{"id" => id}, socket) do
     socket =
-      case Accounts.resend_user_invitation(
-             Accounts.get_user!(id),
-             &url(~p"/users/invite/#{&1}")
-           ) do
-        {:ok, user} ->
-          put_flash(socket, :info, "Invitation resent to #{user.email}.")
+      case Accounts.get_user(id) do
+        nil ->
+          put_flash(socket, :error, "That user no longer exists.")
 
-        {:error, :already_active} ->
-          put_flash(socket, :error, "That user has already activated their account.")
+        user ->
+          case Accounts.resend_user_invitation(user, &url(~p"/users/invite/#{&1}")) do
+            {:ok, invited} ->
+              put_flash(socket, :info, "Invitation resent to #{invited.email}.")
 
-        {:error, _reason} ->
-          put_flash(
-            socket,
-            :error,
-            "Could not send the invitation email. Check the mailer configuration."
-          )
+            {:error, :already_active} ->
+              put_flash(socket, :error, "That user has already activated their account.")
+
+            {:error, _reason} ->
+              put_flash(
+                socket,
+                :error,
+                "Could not send the invitation email. Check the mailer configuration."
+              )
+          end
       end
 
-    {:noreply, assign_users(socket)}
-  end
-
-  defp assign_users(socket) do
-    assign(socket, :users, Accounts.list_users())
+    {:noreply, socket}
   end
 end

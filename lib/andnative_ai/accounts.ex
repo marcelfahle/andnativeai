@@ -42,9 +42,13 @@ defmodule AndnativeAi.Accounts do
   end
 
   @doc """
-  Gets a single user. Raises `Ecto.NoResultsError` if the user does not exist.
+  Gets a single user, or `nil` when the id is unknown or not a valid id.
   """
-  def get_user!(id), do: Repo.get!(User, id)
+  def get_user(id) do
+    Repo.get(User, id)
+  rescue
+    Ecto.Query.CastError -> nil
+  end
 
   ## User registration
 

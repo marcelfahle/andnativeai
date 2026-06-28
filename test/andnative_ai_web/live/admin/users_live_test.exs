@@ -55,13 +55,23 @@ defmodule AndnativeAiWeb.Admin.UsersLiveTest do
     # The current (active) admin has no resend action; the pending user does.
     refute has_element?(lv, "a[phx-click='resend'][phx-value-id='#{admin.id}']")
 
-    html =
-      lv
-      |> element("a[phx-click='resend'][phx-value-id='#{pending.id}']")
-      |> render_click()
+    lv
+    |> element("a[phx-click='resend'][phx-value-id='#{pending.id}']")
+    |> render_click()
 
-    assert html =~ "Invitation resent"
+    assert has_element?(lv, "#flash-group", "Invitation resent")
     # The old invite token was rotated out.
     refute Accounts.get_user_by_invite_token(token)
+  end
+
+  test "ignores a crafted delete event targeting the current user", %{conn: conn, user: admin} do
+    {:ok, lv, _html} = live(conn, ~p"/admin/users")
+
+    # A crafted event sending the id as an integer (not the usual string) must
+    # still be refused by the server-side self-delete guard.
+    render_click(lv, "delete", %{"id" => admin.id})
+
+    assert has_element?(lv, "#flash-group", "can't delete your own account")
+    assert Accounts.get_user_by_email(admin.email)
   end
 end
