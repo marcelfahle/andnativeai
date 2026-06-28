@@ -175,12 +175,16 @@ The last remaining user can never be deleted, so the app can't be locked out.
 
 ### Email delivery
 
-Password reset and invitations send email via Swoosh:
+Password reset and invitations send email via Swoosh. The adapter is selected
+from the environment in **every run mode except `:test`** — including the
+deployed box, which runs `mix phx.server` in `:dev`. So setting the env below
+makes real email send regardless of dev/prod mode.
 
-- **dev / test:** a local/preview adapter — no real email is sent; messages are
-  captured in memory.
-- **prod:** safe by default. With nothing configured, prod falls back to the
-  local adapter (nothing is sent) so an unconfigured deploy never crashes.
+- **test:** always the in-memory Test adapter (no send).
+- **otherwise (dev, prod, the deployed box):** safe by default — with nothing
+  configured it uses the local preview adapter (nothing sent), so an
+  unconfigured deploy never crashes. Set `RESEND_API_KEY` (below) to send real
+  mail.
 
 **Recommended: Resend.** Set `RESEND_API_KEY` and it is used automatically (it
 takes precedence over SMTP). Setup:

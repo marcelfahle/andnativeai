@@ -67,41 +67,10 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
-  # Email delivery (Swoosh). Resend is the recommended provider: set
-  # RESEND_API_KEY and it is used automatically. Otherwise MAILER_ADAPTER=smtp
-  # uses SMTP; with neither set, prod falls back to the Local adapter so an
-  # unconfigured deploy never crashes — emails are previewed/logged instead of
-  # silently lost. No secret is committed; everything comes from the environment.
-  resend_api_key = System.get_env("RESEND_API_KEY") |> to_string() |> String.trim()
-
-  cond do
-    resend_api_key != "" ->
-      # The Resend adapter sends over HTTP, so it needs a Swoosh API client; Req
-      # is already a dependency and needs no supervision-tree setup.
-      config :swoosh, :api_client, Swoosh.ApiClient.Req
-
-      config :andnative_ai, AndnativeAi.Mailer,
-        adapter: Swoosh.Adapters.Resend,
-        api_key: resend_api_key
-
-    System.get_env("MAILER_ADAPTER") == "smtp" ->
-      config :andnative_ai, AndnativeAi.Mailer,
-        adapter: Swoosh.Adapters.SMTP,
-        relay: System.get_env("SMTP_RELAY"),
-        username: System.get_env("SMTP_USERNAME"),
-        password: System.get_env("SMTP_PASSWORD"),
-        port: String.to_integer(System.get_env("SMTP_PORT") || "587"),
-        ssl: System.get_env("SMTP_SSL") in ~w(true 1),
-        tls: :always,
-        auth: :always
-
-    true ->
-      config :andnative_ai, AndnativeAi.Mailer, adapter: Swoosh.Adapters.Local
-  end
-
-  config :andnative_ai,
-         :mailer_from,
-         {"andnative.ai", System.get_env("MAILER_FROM") || "no-reply@#{host}"}
+  # Email delivery (mailer adapter + sender) is configured below, OUTSIDE this
+  # :prod block — this deployment runs `mix phx.server` in :dev, so the mailer
+  # config must apply there too (see the `unless config_env() == :test` block
+  # at the end of this file).
 
   # ## SSL Support
   #
@@ -134,4 +103,46 @@ if config_env() == :prod do
   #       force_ssl: [hsts: true]
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.
+end
+
+# Email delivery (Swoosh) is selected from the environment for every running
+# environment EXCEPT :test (which uses the in-memory Test adapter from
+# config/test.exs). This lives OUTSIDE the :prod block above because the
+# deployment runs `mix phx.server` in :dev — gating the mailer on :prod meant it
+# never applied and email silently fell back to the local (no-send) adapter.
+#
+# Resend is used when RESEND_API_KEY is set; otherwise MAILER_ADAPTER=smtp uses
+# SMTP; otherwise the local preview adapter (no real send). No secret is
+# committed — everything comes from the environment.
+unless config_env() == :test do
+  resend_api_key = System.get_env("RESEND_API_KEY") |> to_string() |> String.trim()
+
+  cond do
+    resend_api_key != "" ->
+      # The Resend adapter sends over HTTP, so it needs a Swoosh API client; Req
+      # is already a dependency and needs no supervision-tree setup.
+      config :swoosh, :api_client, Swoosh.ApiClient.Req
+
+      config :andnative_ai, AndnativeAi.Mailer,
+        adapter: Swoosh.Adapters.Resend,
+        api_key: resend_api_key
+
+    System.get_env("MAILER_ADAPTER") == "smtp" ->
+      config :andnative_ai, AndnativeAi.Mailer,
+        adapter: Swoosh.Adapters.SMTP,
+        relay: System.get_env("SMTP_RELAY"),
+        username: System.get_env("SMTP_USERNAME"),
+        password: System.get_env("SMTP_PASSWORD"),
+        port: String.to_integer(System.get_env("SMTP_PORT") || "587"),
+        ssl: System.get_env("SMTP_SSL") in ~w(true 1),
+        tls: :always,
+        auth: :always
+
+    true ->
+      config :andnative_ai, AndnativeAi.Mailer, adapter: Swoosh.Adapters.Local
+  end
+
+  if mailer_from = System.get_env("MAILER_FROM") do
+    config :andnative_ai, :mailer_from, {"andnative.ai", mailer_from}
+  end
 end
