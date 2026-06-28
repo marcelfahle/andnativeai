@@ -34,6 +34,18 @@ defmodule AndnativeAi.Accounts do
     if User.valid_password?(user, password), do: user
   end
 
+  @doc """
+  Lists all users, ordered by email.
+  """
+  def list_users do
+    Repo.all(from u in User, order_by: [asc: u.email])
+  end
+
+  @doc """
+  Gets a single user. Raises `Ecto.NoResultsError` if the user does not exist.
+  """
+  def get_user!(id), do: Repo.get!(User, id)
+
   ## User registration
 
   @doc """
@@ -148,10 +160,7 @@ defmodule AndnativeAi.Accounts do
 
     case Repo.insert(changeset) do
       {:ok, user} ->
-        {encoded_token, user_token} = UserToken.build_email_token(user, "invite")
-        Repo.insert!(user_token)
-
-        case UserNotifier.deliver_invitation(user, invite_url_fun.(encoded_token)) do
+        case deliver_new_invitation(user, invite_url_fun) do
           {:ok, _email} ->
             {:ok, user}
 
@@ -166,6 +175,23 @@ defmodule AndnativeAi.Accounts do
         {:error, changeset}
     end
   end
+
+  @doc """
+  Resends the invitation to a still-pending (unconfirmed) user: rotates the
+  invite token and re-delivers the email. Returns `{:error, :already_active}`
+  for a user who has already accepted.
+  """
+  def resend_user_invitation(%User{confirmed_at: nil} = user, invite_url_fun)
+      when is_function(invite_url_fun, 1) do
+    Repo.delete_all(UserToken.by_user_and_contexts_query(user, ["invite"]))
+
+    case deliver_new_invitation(user, invite_url_fun) do
+      {:ok, _email} -> {:ok, user}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def resend_user_invitation(%User{}, _invite_url_fun), do: {:error, :already_active}
 
   @doc """
   Gets the user for a valid invite token, or `nil`.
@@ -212,6 +238,12 @@ defmodule AndnativeAi.Accounts do
   end
 
   ## Internal helpers
+
+  defp deliver_new_invitation(user, invite_url_fun) do
+    {encoded_token, user_token} = UserToken.build_email_token(user, "invite")
+    Repo.insert!(user_token)
+    UserNotifier.deliver_invitation(user, invite_url_fun.(encoded_token))
+  end
 
   defp get_user_by_email_token(token, context) do
     with {:ok, query} <- UserToken.verify_email_token_query(token, context),
