@@ -72,3 +72,4 @@ See `docs/slack-app.md` for the Socket Mode app setup.
 - `docs/architecture-handoff.md` explains the current system shape, flows,
   limitations, and verification commands.
 - `docs/decisions.md` records durable product and implementation decisions.
+- `docs/hetzner-demo-deploy.md` records the current single-box demo deployment.

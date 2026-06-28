@@ -1,0 +1,103 @@
+services:
+  control-panel:
+    build: ..
+    container_name: andnative-control-panel
+    command: ./bin/control-panel
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: andnative_ai_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      PHX_HOST: andnativeai.marcelfahle.net
+      PORT: 4000
+      MINIO_ENDPOINT: http://minio:9000
+      REDIS_URL: redis://redis:6379/0
+      RAW_SOURCES_PATH: /app/var/sources
+      OPENCLAW_WORKSPACE_PATH: /app/var/openclaw
+    volumes:
+      - ..:/app
+      - control_mix_deps:/app/deps
+      - control_mix_build:/app/_build
+      - ../var/sources:/app/var/sources
+      - ../var/openclaw:/app/var/openclaw
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    networks:
+      - default
+      - caddy
+
+  slack-listener:
+    build: ..
+    container_name: andnative-slack-listener
+    command: ./bin/slack-listener
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: andnative_ai_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      SERVICE_ROLE: slack-listener
+      SLACK_SOCKET_MODE: "true"
+    volumes:
+      - ..:/app
+      - slack_mix_deps:/app/deps
+      - slack_mix_build:/app/_build
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: andnative_ai_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ../var/postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d andnative_ai_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - ../var/redis:/data
+    restart: unless-stopped
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: andnative
+      MINIO_ROOT_PASSWORD: andnative-secret
+    volumes:
+      - ../var/minio:/data
+    restart: unless-stopped
+
+networks:
+  caddy:
+    external: true
+    name: deploy_default
+
+volumes:
+  control_mix_deps:
+  control_mix_build:
+  slack_mix_deps:
+  slack_mix_build:
