@@ -10,7 +10,11 @@ services:
     environment:
       MIX_ENV: prod
       PHX_SERVER: "true"
-      DATABASE_URL: ecto://postgres:postgres@postgres:5432/andnative_ai_prod
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: andnative_ai_prod
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in /opt/andnativeai/.env}
       PHX_HOST: andnativeai.marcelfahle.net
       PORT: 4000
       MINIO_ENDPOINT: http://minio:9000
@@ -48,7 +52,11 @@ services:
       - ../.env
     environment:
       MIX_ENV: prod
-      DATABASE_URL: ecto://postgres:postgres@postgres:5432/andnative_ai_prod
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: andnative_ai_prod
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in /opt/andnativeai/.env}
       SERVICE_ROLE: slack-listener
       SLACK_SOCKET_MODE: "true"
       MINIO_ENDPOINT: http://minio:9000
@@ -69,7 +77,7 @@ services:
     environment:
       POSTGRES_DB: andnative_ai_prod
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in /opt/andnativeai/.env}
     volumes:
       - ../var/postgres:/var/lib/postgresql/data
     restart: unless-stopped
@@ -90,7 +98,7 @@ services:
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: andnative
-      MINIO_ROOT_PASSWORD: andnative-secret
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in /opt/andnativeai/.env}
     volumes:
       - ../var/minio:/data
     restart: unless-stopped
