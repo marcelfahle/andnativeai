@@ -38,6 +38,10 @@ defmodule AndnativeAiWeb.UserLoginLive do
             Sign in
           </.button>
         </.form>
+
+        <p class="text-center text-sm">
+          <.link navigate={~p"/users/reset-password"} class="link">Forgot your password?</.link>
+        </p>
       </div>
     </Layouts.auth>
     """
