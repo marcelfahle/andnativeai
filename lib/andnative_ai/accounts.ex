@@ -144,6 +144,65 @@ defmodule AndnativeAi.Accounts do
     end
   end
 
+  ## Invitations
+
+  @doc """
+  Invites a new user by email: creates the user with a random (unguessable)
+  password and an unset `confirmed_at`, then emails an activation link. The
+  invitee sets their real password via `accept_invitation/2`.
+  """
+  def invite_user(email, invite_url_fun) when is_function(invite_url_fun, 1) do
+    random_password = Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
+
+    case register_user(%{email: email, password: random_password}) do
+      {:ok, user} ->
+        {encoded_token, user_token} = UserToken.build_email_token(user, "invite")
+        Repo.insert!(user_token)
+        {:ok, _email} = UserNotifier.deliver_invitation(user, invite_url_fun.(encoded_token))
+        {:ok, user}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  @doc """
+  Gets the user for a valid invite token, or `nil`.
+  """
+  def get_user_by_invite_token(token) do
+    with {:ok, query} <- UserToken.verify_email_token_query(token, "invite"),
+         %User{} = user <- Repo.one(query) do
+      user
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Accepts an invitation: sets the invitee's chosen password, stamps
+  `confirmed_at`, and clears the user's invite and session tokens.
+  """
+  def accept_invitation(user, attrs) do
+    now = DateTime.truncate(DateTime.utc_now(), :second)
+
+    changeset =
+      user
+      |> User.password_changeset(attrs)
+      |> Ecto.Changeset.put_change(:confirmed_at, now)
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.update(:user, changeset)
+    |> Ecto.Multi.delete_all(
+      :tokens,
+      UserToken.by_user_and_contexts_query(user, ["invite", "session"])
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{user: user}} -> {:ok, user}
+      {:error, :user, changeset, _} -> {:error, changeset}
+    end
+  end
+
   ## User administration
 
   @doc """

@@ -179,6 +179,46 @@ defmodule AndnativeAi.AccountsTest do
     end
   end
 
+  describe "invitations" do
+    test "invite_user creates an un-loginable, unconfirmed user and emails a token" do
+      email = unique_user_email()
+
+      token =
+        extract_user_token(fn url ->
+          {:ok, _user} = Accounts.invite_user(email, url)
+        end)
+
+      user = Accounts.get_user_by_email(email)
+      assert user
+      assert is_nil(user.confirmed_at)
+      refute Accounts.get_user_by_email_and_password(email, valid_user_password())
+      assert Accounts.get_user_by_invite_token(token).id == user.id
+    end
+
+    test "invite_user rejects a duplicate email" do
+      %{email: email} = user_fixture()
+      assert {:error, changeset} = Accounts.invite_user(email, fn _ -> "https://example.com" end)
+      assert "has already been taken" in errors_on(changeset).email
+    end
+
+    test "accept_invitation sets the password, stamps confirmed_at, and clears the token" do
+      email = unique_user_email()
+
+      token =
+        extract_user_token(fn url ->
+          {:ok, _user} = Accounts.invite_user(email, url)
+        end)
+
+      user = Accounts.get_user_by_invite_token(token)
+
+      {:ok, accepted} = Accounts.accept_invitation(user, %{password: "the chosen password"})
+
+      assert accepted.confirmed_at
+      assert Accounts.get_user_by_email_and_password(email, "the chosen password")
+      refute Accounts.get_user_by_invite_token(token)
+    end
+  end
+
   describe "delete_user/1" do
     test "refuses to delete the last remaining user" do
       user = user_fixture()
