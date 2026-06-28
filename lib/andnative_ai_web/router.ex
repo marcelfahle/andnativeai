@@ -1,6 +1,8 @@
 defmodule AndnativeAiWeb.Router do
   use AndnativeAiWeb, :router
 
+  import AndnativeAiWeb.UserAuth
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,24 +10,49 @@ defmodule AndnativeAiWeb.Router do
     plug :put_root_layout, html: {AndnativeAiWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :fetch_current_user
   end
 
   pipeline :api do
     plug :accepts, ["json"]
   end
 
+  ## Public routes (no authentication required)
+
   scope "/", AndnativeAiWeb do
     pipe_through :browser
 
     get "/", PageController, :home
-    get "/slack/install", SlackOAuthController, :install
+
+    # Slack must be able to reach the OAuth callback without an admin session.
     get "/slack/oauth/callback", SlackOAuthController, :callback
-    live "/admin/control-plane", Admin.ControlPlaneLive
-    live "/admin/agents", Admin.AgentsLive
-    live "/admin/sources", Admin.DocumentsLive
-    live "/admin/documents", Admin.DocumentsLive
-    live "/admin/slack", Admin.SlackLive
-    live "/admin/runtime", Admin.RuntimeLive
+
+    post "/login", UserSessionController, :create
+    delete "/logout", UserSessionController, :delete
+
+    live_session :redirect_if_user_is_authenticated,
+      on_mount: [{AndnativeAiWeb.UserAuth, :redirect_if_user_is_authenticated}] do
+      live "/login", UserLoginLive
+    end
+  end
+
+  ## Authenticated admin routes
+
+  scope "/", AndnativeAiWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    # Starting the Slack install flow requires a logged-in admin.
+    get "/slack/install", SlackOAuthController, :install
+
+    live_session :require_authenticated_user,
+      on_mount: [{AndnativeAiWeb.UserAuth, :require_authenticated}] do
+      live "/admin/control-plane", Admin.ControlPlaneLive
+      live "/admin/agents", Admin.AgentsLive
+      live "/admin/sources", Admin.DocumentsLive
+      live "/admin/documents", Admin.DocumentsLive
+      live "/admin/slack", Admin.SlackLive
+      live "/admin/runtime", Admin.RuntimeLive
+    end
   end
 
   scope "/api", AndnativeAiWeb do

@@ -108,7 +108,7 @@ defmodule AndnativeAiWeb.Admin.AgentsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_user={@current_user}>
       <div class="space-y-8">
         <section class="flex flex-col gap-2 border-b border-base-300 pb-6 md:flex-row md:items-end md:justify-between">
           <div>

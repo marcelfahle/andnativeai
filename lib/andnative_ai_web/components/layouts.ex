@@ -27,9 +27,9 @@ defmodule AndnativeAiWeb.Layouts do
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
 
-  attr :current_scope, :map,
+  attr :current_user, :map,
     default: nil,
-    doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
+    doc: "the currently authenticated user, when present"
 
   slot :inner_block, required: true
 
@@ -61,6 +61,12 @@ defmodule AndnativeAiWeb.Layouts do
             <.icon name="hero-command-line" class="size-4" /> Runtime
           </.link>
           <.theme_toggle />
+          <div :if={@current_user} class="flex items-center gap-2 pl-2">
+            <span class="hidden text-xs text-base-content/60 sm:inline">{@current_user.email}</span>
+            <.link href={~p"/logout"} method="delete" class="btn btn-ghost btn-sm">
+              <.icon name="hero-arrow-right-on-rectangle" class="size-4" /> Log out
+            </.link>
+          </div>
         </nav>
       </div>
     </header>

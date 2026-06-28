@@ -31,10 +31,11 @@ defmodule AndnativeAiWeb.SlackOAuthControllerTest do
     :ok
   end
 
+  setup :register_and_log_in_user
+
   test "install redirects to Slack OAuth with state and configured scopes", %{conn: conn} do
     conn =
       conn
-      |> init_test_session(%{})
       |> get(~p"/slack/install")
 
     assert redirected_to(conn) =~ "https://slack.com/oauth/v2/authorize?"
@@ -54,7 +55,6 @@ defmodule AndnativeAiWeb.SlackOAuthControllerTest do
   test "callback exchanges the code and stores the Slack install", %{conn: conn} do
     conn =
       conn
-      |> init_test_session(%{})
       |> get(~p"/slack/install")
 
     state = get_session(conn, :slack_oauth_state)
@@ -108,7 +108,6 @@ defmodule AndnativeAiWeb.SlackOAuthControllerTest do
 
     conn =
       conn
-      |> init_test_session(%{})
       |> get(~p"/slack/install")
 
     assert redirected_to(conn) =~ "https://slack.com/oauth/v2/authorize?"
@@ -130,8 +129,18 @@ defmodule AndnativeAiWeb.SlackOAuthControllerTest do
 
     conn =
       conn
-      |> init_test_session(%{})
       |> get(~p"/slack/install")
+
+    assert redirected_to(conn) == ~p"/admin/slack"
+  end
+
+  test "OAuth callback stays reachable without authentication" do
+    # Slack calls the callback directly, so it must remain public — an
+    # unauthenticated request runs the controller rather than redirecting to login.
+    conn =
+      build_conn()
+      |> init_test_session(%{slack_oauth_state: "expected"})
+      |> get(~p"/slack/oauth/callback", %{"code" => "valid-code", "state" => "wrong"})
 
     assert redirected_to(conn) == ~p"/admin/slack"
   end

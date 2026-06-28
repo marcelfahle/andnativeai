@@ -8,6 +8,8 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLiveTest do
   alias AndnativeAi.Memory
   alias AndnativeAi.Repo
 
+  setup :register_and_log_in_user
+
   test "control plane shows appliance status cards and runtime trust timeline", %{conn: conn} do
     tenant = Memory.ensure_demo_tenant!()
     source_id = "handbook-#{System.unique_integer([:positive])}"
