@@ -28,6 +28,7 @@ From local repo:
 rsync -az --delete \
   --exclude .git \
   --exclude .DS_Store \
+  --exclude .env \
   --exclude _build \
   --exclude deps \
   --exclude var \
@@ -40,6 +41,38 @@ On the server:
 ```sh
 cd /opt/andnativeai/deploy
 docker compose -p andnativeai -f hetzner-demo.compose.yml up -d --build
+```
+
+## Auto Deploy From Main
+
+GitHub Actions deploys every push to `main`.
+
+Workflow:
+
+1. Check out `main`.
+2. Rsync tracked application files to `/opt/andnativeai`.
+3. Preserve server-only state by excluding `.env`, `var/`, `_build`, and `deps`.
+4. Run the existing Compose deploy command.
+5. Force-recreate `control-panel` and `slack-listener` so the running BEAM
+   processes pick up the synced code.
+6. Verify the public URL still returns Caddy auth and the internal admin routes
+   return 200.
+
+Required GitHub secret:
+
+- `HETZNER_DEPLOY_SSH_KEY`: private key for the server user
+  `andnative-deploy`.
+
+Server setup:
+
+- User: `andnative-deploy`
+- App path: `/opt/andnativeai`
+- User must be able to write app files and run Docker Compose.
+
+Manual fallback remains:
+
+```sh
+gh workflow run deploy-main.yml --ref main
 ```
 
 ## Caddy

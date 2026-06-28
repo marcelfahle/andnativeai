@@ -1,0 +1,72 @@
+name: Deploy Main
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      DEPLOY_HOST: 91.99.49.152
+      DEPLOY_USER: andnative-deploy
+      DEPLOY_PATH: /opt/andnativeai
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install deploy SSH key
+        run: |
+          test -n "${{ secrets.HETZNER_DEPLOY_SSH_KEY }}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.HETZNER_DEPLOY_SSH_KEY }}" > ~/.ssh/andnative_deploy
+          chmod 600 ~/.ssh/andnative_deploy
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Sync application files
+        run: |
+          rsync -az --delete \
+            --exclude .git \
+            --exclude .DS_Store \
+            --exclude .env \
+            --exclude _build \
+            --exclude deps \
+            --exclude var \
+            -e "ssh -i ~/.ssh/andnative_deploy -o StrictHostKeyChecking=yes" \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+
+      - name: Rebuild and restart Hetzner stack
+        run: |
+          ssh -i ~/.ssh/andnative_deploy -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" <<'REMOTE'
+          set -euo pipefail
+          cd /opt/andnativeai/deploy
+          docker compose -p andnativeai -f hetzner-demo.compose.yml up -d --build
+          docker compose -p andnativeai -f hetzner-demo.compose.yml up -d --force-recreate control-panel slack-listener
+          docker compose -p andnativeai -f hetzner-demo.compose.yml ps
+          REMOTE
+
+      - name: Verify deployment
+        run: |
+          code="$(curl -sS -o /dev/null -w '%{http_code}' https://andnativeai.marcelfahle.net)"
+          test "$code" = "401"
+
+          ssh -i ~/.ssh/andnative_deploy -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" <<'REMOTE'
+          set -euo pipefail
+          sleep 5
+          docker exec andnative-control-panel curl -fsS -o /dev/null http://localhost:4000/admin/control-plane
+          docker exec andnative-control-panel curl -fsS -o /dev/null http://localhost:4000/admin/slack
+          docker exec andnative-control-panel curl -fsS -o /dev/null http://localhost:4000/admin/agents
+          REMOTE
