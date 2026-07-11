@@ -84,6 +84,20 @@ defmodule AndnativeAi.Demo.AcceptanceTest do
     assert response.answer =~ "example.slack.com"
     assert Enum.any?(response.citations, &String.contains?(&1, "example.slack.com"))
 
+    # Governed forgetting, step 1: while the handbook exists, the agent
+    # answers the reimbursement question from it, with a citation.
+    reimbursement_question = "<@UBOT> When do reimbursements need manager approval?"
+
+    assert {:ok, known_response} =
+             OpenClaw.dispatch_mention(agent, %{
+               "type" => "app_mention",
+               "text" => reimbursement_question
+             })
+
+    assert known_response.answer =~ "manager approval"
+    refute known_response.answer =~ "could not find"
+    assert Enum.any?(known_response.citations, &String.contains?(&1, "handbook.md"))
+
     assert {:ok, %{deleted_items_count: deleted_count}} =
              DocumentIngestion.delete_source(tenant.id, doc_source.id)
 
@@ -94,10 +108,12 @@ defmodule AndnativeAi.Demo.AcceptanceTest do
              &(&1.source.name == "handbook.md")
            )
 
+    # Governed forgetting, step 2: the same question after source deletion
+    # must no longer be answerable from the deleted handbook.
     assert {:ok, unknown_response} =
              OpenClaw.dispatch_mention(agent, %{
                "type" => "app_mention",
-               "text" => "<@UBOT> When do reimbursements need manager approval?"
+               "text" => reimbursement_question
              })
 
     assert unknown_response.answer =~ "could not find"
