@@ -9,6 +9,9 @@ defmodule AndnativeAi.Runtime.Audit do
 
   alias AndnativeAi.Repo
   alias AndnativeAi.Runtime.AuditEvent
+  alias AndnativeAi.Runtime.AuditEventKinds
+
+  @pubsub AndnativeAi.PubSub
 
   @blocked_metadata_key_fragments ~w(
     answer
@@ -81,8 +84,26 @@ defmodule AndnativeAi.Runtime.Audit do
       %AuditEvent{tenant_id: tenant_id}
       |> AuditEvent.changeset(attrs)
       |> Repo.insert()
+      |> broadcast_recorded()
     end
   end
+
+  @doc """
+  Subscribes the calling process to live audit events for a tenant. Each
+  recorded event arrives as `{:audit_event_recorded, %AuditEvent{}}`.
+  """
+  def subscribe(tenant_id) do
+    Phoenix.PubSub.subscribe(@pubsub, topic(tenant_id))
+  end
+
+  defp topic(tenant_id), do: "audit_events:#{tenant_id}"
+
+  defp broadcast_recorded({:ok, event} = result) do
+    Phoenix.PubSub.broadcast(@pubsub, topic(event.tenant_id), {:audit_event_recorded, event})
+    result
+  end
+
+  defp broadcast_recorded(result), do: result
 
   def record_best_effort(attrs) do
     case record_event(attrs) do
@@ -114,6 +135,127 @@ defmodule AndnativeAi.Runtime.Audit do
         limit: ^limit,
         preload: ^preload
     )
+  end
+
+  @doc """
+  Lists audit events for the control-plane timeline with optional filters.
+
+  Options:
+
+    * `:category` - a category key from `AuditEventKinds.categories/0`
+      (atom or string); restricts to that category's event kinds
+    * `:query` - matches request id, summary, actor, or event kind (ilike)
+    * `:before_id` - cursor for pagination; returns events with a smaller id
+    * `:limit` - page size, clamped to 1..100 (default 25)
+    * `:preload` - associations to preload
+  """
+  def list_events(tenant_id, opts \\ []) do
+    limit = opts |> Keyword.get(:limit, 25) |> clamp_limit()
+    preload = Keyword.get(opts, :preload, [])
+
+    AuditEvent
+    |> where([event], event.tenant_id == ^tenant_id)
+    |> apply_category(Keyword.get(opts, :category))
+    |> apply_query(Keyword.get(opts, :query))
+    |> apply_cursor(Keyword.get(opts, :before_id))
+    |> order_by([event], desc: event.occurred_at, desc: event.id)
+    |> limit(^limit)
+    |> preload(^preload)
+    |> Repo.all()
+  end
+
+  @doc "Counts events per category for the current tenant."
+  def category_counts(tenant_id) do
+    kind_counts =
+      AuditEvent
+      |> where([event], event.tenant_id == ^tenant_id)
+      |> group_by([event], event.event_kind)
+      |> select([event], {event.event_kind, count(event.id)})
+      |> Repo.all()
+
+    Enum.reduce(kind_counts, %{all: 0}, fn {kind, count}, acc ->
+      category = AuditEventKinds.category(kind)
+
+      acc
+      |> Map.update(:all, count, &(&1 + count))
+      |> Map.update(category, count, &(&1 + count))
+    end)
+  end
+
+  @doc "Counts events of one kind for the tenant."
+  def count_events_by_kind(tenant_id, kind) do
+    AuditEvent
+    |> where([event], event.tenant_id == ^tenant_id and event.event_kind == ^kind)
+    |> select([event], count(event.id))
+    |> Repo.one()
+  end
+
+  @doc "Fetches one tenant-scoped event, or nil."
+  def get_event(tenant_id, id, opts \\ []) do
+    preload = Keyword.get(opts, :preload, [])
+
+    AuditEvent
+    |> where([event], event.tenant_id == ^tenant_id and event.id == ^id)
+    |> preload(^preload)
+    |> Repo.one()
+  end
+
+  @doc """
+  Returns the full correlated trace for one request id, oldest first, so a
+  single governed action reads as a story: mention -> search -> answer ->
+  citation -> delivery.
+  """
+  def list_request_events(tenant_id, request_id, opts \\ [])
+
+  def list_request_events(_tenant_id, request_id, _opts)
+      when request_id in [nil, ""],
+      do: []
+
+  def list_request_events(tenant_id, request_id, opts) do
+    preload = Keyword.get(opts, :preload, [])
+
+    Repo.all(
+      from event in AuditEvent,
+        where: event.tenant_id == ^tenant_id and event.request_id == ^request_id,
+        order_by: [asc: event.occurred_at, asc: event.id],
+        preload: ^preload
+    )
+  end
+
+  defp apply_category(queryable, nil), do: queryable
+  defp apply_category(queryable, "all"), do: queryable
+  defp apply_category(queryable, :all), do: queryable
+
+  defp apply_category(queryable, category) do
+    case AuditEventKinds.kinds_for_category(category) do
+      [] -> queryable
+      kinds -> where(queryable, [event], event.event_kind in ^kinds)
+    end
+  end
+
+  defp apply_query(queryable, query) when is_binary(query) and query != "" do
+    pattern = "%#{sanitize_like(query)}%"
+
+    where(
+      queryable,
+      [event],
+      ilike(event.request_id, ^pattern) or
+        ilike(event.summary, ^pattern) or
+        ilike(event.actor, ^pattern) or
+        ilike(event.event_kind, ^pattern)
+    )
+  end
+
+  defp apply_query(queryable, _query), do: queryable
+
+  defp apply_cursor(queryable, before_id) when is_integer(before_id) do
+    where(queryable, [event], event.id < ^before_id)
+  end
+
+  defp apply_cursor(queryable, _before_id), do: queryable
+
+  defp sanitize_like(query) do
+    String.replace(query, ~r/[%_\\]/, fn char -> "\\" <> char end)
   end
 
   def sanitize_metadata(metadata) when is_map(metadata) do

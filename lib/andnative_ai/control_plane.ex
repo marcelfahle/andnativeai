@@ -7,6 +7,8 @@ defmodule AndnativeAi.ControlPlane do
   alias AndnativeAi.Runtime.{Audit, AuditEventKinds, OpenClaw}
   alias AndnativeAi.Slack.Installations
 
+  @answer_minutes_saved 4
+
   def snapshot(tenant) do
     agents = Memory.list_agents(tenant.id)
     source_counts = Memory.source_counts_by_type(tenant.id)
@@ -30,7 +32,84 @@ defmodule AndnativeAi.ControlPlane do
           audit_events: audit_events
         }),
       audit_events: audit_events,
-      summary: summary(agents, counts, agent_health, audit_events)
+      summary: summary(agents, counts, agent_health, audit_events),
+      outcomes: outcomes(tenant.id, counts)
+    }
+  end
+
+  @doc """
+  Presents a persisted audit event for the control-plane timeline. Accepts a
+  preloaded `%AuditEvent{}` (or one without preloads, e.g. from PubSub).
+  """
+  def present_event(event), do: audit_event(event)
+
+  @doc """
+  Presents an event that arrived over PubSub, loading the source association
+  it needs for display.
+  """
+  def present_recorded_event(event) do
+    event
+    |> AndnativeAi.Repo.preload(:source)
+    |> audit_event()
+  end
+
+  @doc """
+  Business-outcome tiles for the control plane. Real counts come from the
+  database; estimated values are explicitly flagged so the demo stays honest.
+  """
+  def outcomes(tenant_id, counts) do
+    answers = Audit.count_events_by_kind(tenant_id, "answer_generated") || 0
+    citations = Audit.count_events_by_kind(tenant_id, "citation_attached") || 0
+    delivered = Audit.count_events_by_kind(tenant_id, "slack_response_posted") || 0
+
+    %{
+      sources_connected: counts.active_sources,
+      memories_retained: counts.memory_items,
+      answers_generated: answers,
+      citations_attached: citations,
+      responses_delivered: delivered,
+      minutes_saved_estimate: answers * @answer_minutes_saved,
+      next_action: next_action(counts, answers)
+    }
+  end
+
+  defp next_action(%{slack_sources: 0} = counts, _answers) do
+    if counts.installations == 0 and not Installations.env_fallback_configured?() do
+      %{
+        title: "Connect Slack",
+        detail: "Install the workspace app so channel knowledge can become governed memory.",
+        href: "/admin/slack"
+      }
+    else
+      %{
+        title: "Invite the bot to a channel",
+        detail: "Invite @andnative-ai to a public channel to backfill and govern its history.",
+        href: "/admin/slack"
+      }
+    end
+  end
+
+  defp next_action(%{document_sources: 0}, _answers) do
+    %{
+      title: "Upload your first document",
+      detail: "A handbook or policy doc becomes cited, deletable memory in seconds.",
+      href: "/admin/sources"
+    }
+  end
+
+  defp next_action(_counts, 0) do
+    %{
+      title: "Ask the agent a question",
+      detail: "Mention @andnative-ai in Slack and watch the answer trace appear here.",
+      href: "/admin/runtime"
+    }
+  end
+
+  defp next_action(_counts, _answers) do
+    %{
+      title: "Define the next governed workflow",
+      detail: "Pick one painful weekly workflow and scope it with the evaluation plan.",
+      href: "/admin/agents"
     }
   end
 
@@ -137,6 +216,7 @@ defmodule AndnativeAi.ControlPlane do
       kind_label: display.label,
       icon: display.icon,
       tone: event_tone(display.tone, event.status),
+      category: AuditEventKinds.category(event.event_kind),
       actor: event.actor,
       component: event.component,
       status: event.status,
@@ -145,6 +225,7 @@ defmodule AndnativeAi.ControlPlane do
       citation_url: citation_url,
       citation_label: citation_label,
       source_name: source_name(event),
+      metadata: event.metadata || %{},
       occurred_at: event.occurred_at
     }
   end

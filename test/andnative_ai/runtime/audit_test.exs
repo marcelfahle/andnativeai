@@ -214,6 +214,142 @@ defmodule AndnativeAi.Runtime.AuditTest do
     assert event.metadata["result_count"] == 1
   end
 
+  describe "control-plane timeline queries" do
+    test "list_events filters by category, query, and cursor" do
+      tenant = tenant_fixture("audit-filters")
+
+      {:ok, searched} =
+        Audit.record_event(%{
+          tenant_id: tenant.id,
+          event_kind: "memory_searched",
+          component: "memory_tool",
+          actor: "Agent",
+          status: "ok",
+          summary: "Agent searched governed memory.",
+          request_id: "req-a"
+        })
+
+      {:ok, deleted} =
+        Audit.record_event(%{
+          tenant_id: tenant.id,
+          event_kind: "source_deleted",
+          component: "memory_service",
+          actor: "Memory service",
+          status: "deleted",
+          summary: "Handbook removed.",
+          request_id: "req-b"
+        })
+
+      {:ok, indexed} =
+        Audit.record_event(%{
+          tenant_id: tenant.id,
+          event_kind: "memory_indexed",
+          component: "memory_service",
+          actor: "Memory service",
+          status: "indexed",
+          summary: "Chunks indexed.",
+          request_id: "req-c"
+        })
+
+      assert [%{id: id_a}] = Audit.list_events(tenant.id, category: "governance")
+      assert id_a == deleted.id
+
+      assert [%{id: ^id_a}] = Audit.list_events(tenant.id, category: :governance)
+
+      assert [%{id: id_b}] = Audit.list_events(tenant.id, query: "req-a")
+      assert id_b == searched.id
+
+      assert [%{id: id_c}] = Audit.list_events(tenant.id, query: "handbook")
+      assert id_c == deleted.id
+
+      # Cursor pagination walks backwards through ids.
+      assert [first, second] = Audit.list_events(tenant.id, limit: 2)
+      assert first.id == indexed.id
+
+      assert [third] = Audit.list_events(tenant.id, before_id: second.id)
+      assert third.id == searched.id
+    end
+
+    test "category_counts groups event totals by category" do
+      tenant = tenant_fixture("audit-counts")
+
+      for kind <- ["memory_searched", "memory_indexed", "source_deleted", "runtime_error"] do
+        {:ok, _} =
+          Audit.record_event(%{
+            tenant_id: tenant.id,
+            event_kind: kind,
+            component: "memory_service",
+            actor: "Memory service",
+            status: "ok",
+            summary: "#{kind} happened"
+          })
+      end
+
+      counts = Audit.category_counts(tenant.id)
+
+      assert counts[:all] == 4
+      assert counts[:memory] == 1
+      assert counts[:runtime] == 1
+      assert counts[:governance] == 1
+      assert counts[:errors] == 1
+
+      assert Audit.count_events_by_kind(tenant.id, "memory_indexed") == 1
+    end
+
+    test "list_request_events returns the correlated trace oldest first" do
+      tenant = tenant_fixture("audit-trace")
+
+      {:ok, first} =
+        Audit.record_event(%{
+          tenant_id: tenant.id,
+          event_kind: "slack_mention_received",
+          component: "slack_listener",
+          actor: "Slack listener",
+          status: "received",
+          summary: "Mention received.",
+          request_id: "req-trace",
+          occurred_at: ~U[2026-07-11 10:00:00Z]
+        })
+
+      {:ok, second} =
+        Audit.record_event(%{
+          tenant_id: tenant.id,
+          event_kind: "answer_generated",
+          component: "openclaw_runtime",
+          actor: "Agent",
+          status: "ok",
+          summary: "Answer generated.",
+          request_id: "req-trace",
+          occurred_at: ~U[2026-07-11 10:00:01Z]
+        })
+
+      assert [%{id: id_1}, %{id: id_2}] = Audit.list_request_events(tenant.id, "req-trace")
+      assert id_1 == first.id
+      assert id_2 == second.id
+
+      assert Audit.list_request_events(tenant.id, nil) == []
+      assert Audit.list_request_events(tenant.id, "") == []
+    end
+
+    test "recorded events broadcast to tenant subscribers" do
+      tenant = tenant_fixture("audit-pubsub")
+      :ok = Audit.subscribe(tenant.id)
+
+      {:ok, event} =
+        Audit.record_event(%{
+          tenant_id: tenant.id,
+          event_kind: "memory_indexed",
+          component: "memory_service",
+          actor: "Memory service",
+          status: "indexed",
+          summary: "Broadcast me."
+        })
+
+      event_id = event.id
+      assert_receive {:audit_event_recorded, %AuditEvent{id: ^event_id}}
+    end
+  end
+
   defp tenant_fixture(slug) do
     {:ok, tenant} =
       Memory.create_tenant(%{
