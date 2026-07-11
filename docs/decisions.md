@@ -42,9 +42,9 @@ Why:
 
 Current caveat:
 
-- Linear and other Slack app posts often arrive as bot/app subtype messages with
-  useful text in `blocks` or `attachments`. Current ingestion does not parse
-  those deeply, so Linear ticket posts may not become memory.
+- Linear and other Slack app posts arrive as bot/app subtype messages with
+  useful text in `blocks` or `attachments`. These are parsed and can become
+  memory when the channel opts in; see DEC-014.
 
 ## DEC-004: Bot Questions Are Not Knowledge
 
@@ -188,3 +188,22 @@ Implication:
 - Deploy sync excludes `.env`, `var/`, `_build`, `deps`, and generated
   `priv/static/assets`.
 - Manual rsync deploy remains a fallback, not the normal path.
+
+## DEC-014: App/Bot Post Ingestion Is Per-Channel Opt-In
+
+Slack app and bot posts (Linear issue updates and similar) can become memory,
+but only when a channel's source policy enables `ingest_bot_messages`. The
+default is off. Enabled app posts are normalized from `blocks` and
+`attachments` into plain text, tagged as curated app content so distillation
+keeps them, and Linear URLs are preserved as `app_link` provenance next to the
+Slack permalink. Our own bot's posts are always excluded, and policy toggles
+write a `source_policy_changed` audit event.
+
+Why:
+
+- Linear notifications carry durable facts, but arrive as `bot_message`
+  subtypes with empty `text`, which the human path ignores.
+- A conservative default avoids ingesting noisy CI/monitoring bots without an
+  explicit admin decision.
+- The policy change itself is governance evidence and belongs on the audit
+  timeline.

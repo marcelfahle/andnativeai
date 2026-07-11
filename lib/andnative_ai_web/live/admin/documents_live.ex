@@ -53,6 +53,37 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
     {:noreply, socket}
   end
 
+  def handle_event("toggle-bot-ingestion", %{"id" => id}, socket) do
+    source_id = String.to_integer(id)
+    tenant_id = socket.assigns.tenant.id
+    source = Memory.get_source!(tenant_id, source_id)
+    enabled? = not AndnativeAi.Memory.Source.ingest_bot_messages?(source)
+    actor = socket.assigns.current_user && socket.assigns.current_user.email
+
+    socket =
+      case Memory.update_source_settings(
+             tenant_id,
+             source_id,
+             %{"ingest_bot_messages" => enabled?},
+             actor: actor || "Admin"
+           ) do
+        {:ok, _source} ->
+          message =
+            if enabled?,
+              do: "App & bot posts will now be ingested for this channel.",
+              else: "App & bot posts are no longer ingested for this channel."
+
+          socket
+          |> put_flash(:info, message)
+          |> reload_sources()
+
+        {:error, _reason} ->
+          put_flash(socket, :error, "Could not update the channel policy.")
+      end
+
+    {:noreply, socket}
+  end
+
   def handle_event("delete", %{"id" => id}, socket) do
     source_id = String.to_integer(id)
 
@@ -199,17 +230,41 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
               <div class="min-w-0">
                 <p class="truncate font-medium">{source.name}</p>
                 <p class="mt-1 truncate text-xs text-base-content/60">{source.source_id}</p>
-                <span class="mt-2 badge badge-outline">{source.status}</span>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <span class="badge badge-outline">{source.status}</span>
+                  <span
+                    :if={AndnativeAi.Memory.Source.ingest_bot_messages?(source)}
+                    class="badge badge-info badge-outline"
+                  >
+                    app posts on
+                  </span>
+                </div>
               </div>
-              <button
-                id={"delete-source-#{source.id}"}
-                class="btn btn-ghost btn-sm text-error"
-                phx-click="delete"
-                phx-value-id={source.id}
-                data-confirm="Delete this source from memory?"
-              >
-                <.icon name="hero-trash" class="size-4" />
-              </button>
+              <div class="flex items-center gap-2">
+                <label
+                  class="flex cursor-pointer items-center gap-2 text-xs text-base-content/70"
+                  title="Ingest app & bot posts (Linear updates and similar) from this channel"
+                >
+                  <input
+                    type="checkbox"
+                    id={"toggle-bot-ingestion-#{source.id}"}
+                    class="toggle toggle-sm"
+                    checked={AndnativeAi.Memory.Source.ingest_bot_messages?(source)}
+                    phx-click="toggle-bot-ingestion"
+                    phx-value-id={source.id}
+                  />
+                  <span class="hidden sm:inline">App &amp; bot posts</span>
+                </label>
+                <button
+                  id={"delete-source-#{source.id}"}
+                  class="btn btn-ghost btn-sm text-error"
+                  phx-click="delete"
+                  phx-value-id={source.id}
+                  data-confirm="Delete this source from memory?"
+                >
+                  <.icon name="hero-trash" class="size-4" />
+                </button>
+              </div>
             </div>
           </div>
         </section>

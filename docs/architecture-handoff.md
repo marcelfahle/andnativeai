@@ -99,6 +99,12 @@ Behavior:
 - Normal messages in already-joined channels are distilled and appended.
 - Messages mentioning the bot are answered, but are not stored as knowledge.
 - Bot-authored messages are ignored as knowledge.
+- App/bot posts (Linear notifications and similar) are ingested only when the
+  channel's source policy enables `ingest_bot_messages` (toggle on the Sources
+  page; default off). `AndnativeAi.Slack.MessageText` flattens `blocks` and
+  `attachments` into searchable text, keeps the Linear issue URL as `app_link`
+  provenance, and the policy toggle writes a `source_policy_changed` audit
+  event. The app's own bot posts are always excluded.
 - Slack edits/deletes replace channel memory and backfill current history.
 - `member_left_channel` and `member_kicked_channel` soft-delete the channel
   source if Slack sends the event for the bot user.
@@ -183,9 +189,10 @@ docker compose config --quiet
 - One demo tenant only.
 - Public Slack channels only.
 - Slack channel names are stored as channel IDs unless enriched later.
-- Slack app/bot posts such as Linear notifications are not reliably ingested.
-  The live message path ignores most Slack `subtype` messages, and the distiller
-  currently reads `text` only, not rich `blocks` or `attachments`.
+- Slack app/bot post ingestion is per-channel opt-in and parses `blocks` and
+  `attachments`, with Linear-aware URL provenance. Deep parsers for other apps
+  (Jira, GitHub) are not implemented; unusual block types fall back to plain
+  text fragments.
 - Slack backfill only sees the most recent `SLACK_HISTORY_LIMIT` messages.
 - Embeddings are deterministic local hashes, not production semantic embeddings.
 - OpenClaw integration is a config/runtime adapter shape, not a full gateway.

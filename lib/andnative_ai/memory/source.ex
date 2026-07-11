@@ -9,6 +9,7 @@ defmodule AndnativeAi.Memory.Source do
     field :name, :string
     field :permalink_or_url, :string
     field :status, :string, default: "pending"
+    field :settings, :map, default: %{}
     field :last_ingested_at, :utc_datetime
     field :deleted_at, :utc_datetime
 
@@ -26,6 +27,7 @@ defmodule AndnativeAi.Memory.Source do
       :name,
       :permalink_or_url,
       :status,
+      :settings,
       :last_ingested_at,
       :deleted_at
     ])
@@ -33,4 +35,11 @@ defmodule AndnativeAi.Memory.Source do
     |> validate_inclusion(:source_type, ["document", "slack_channel", "slack_thread"])
     |> unique_constraint([:tenant_id, :source_type, :source_id])
   end
+
+  @doc """
+  Whether app/bot-authored Slack messages (Linear updates and similar) may be
+  ingested from this source. Off unless explicitly enabled per channel.
+  """
+  def ingest_bot_messages?(%__MODULE__{settings: %{"ingest_bot_messages" => true}}), do: true
+  def ingest_bot_messages?(_source), do: false
 end

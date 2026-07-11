@@ -7,6 +7,11 @@ defmodule AndnativeAi.Runtime.AuditEventKinds do
     "source_ingested" => %{label: "Source ingested", icon: "hero-arrow-down-tray", tone: :ready},
     "memory_indexed" => %{label: "Memory indexed", icon: "hero-circle-stack", tone: :ready},
     "source_deleted" => %{label: "Source deleted", icon: "hero-trash", tone: :warning},
+    "source_policy_changed" => %{
+      label: "Policy changed",
+      icon: "hero-shield-check",
+      tone: :warning
+    },
     "slack_mention_received" => %{
       label: "Slack mention",
       icon: "hero-chat-bubble-left-right",

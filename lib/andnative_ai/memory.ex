@@ -101,6 +101,52 @@ defmodule AndnativeAi.Memory do
     Repo.get_by!(Source, id: id, tenant_id: tenant_id)
   end
 
+  @doc """
+  Merges the given settings into a source's settings map and records a
+  governance audit event describing the policy change.
+  """
+  def update_source_settings(tenant_id, source_id, new_settings, opts \\ [])
+      when is_map(new_settings) do
+    source = get_source!(tenant_id, source_id)
+    changes = stringify_keys(new_settings)
+    merged = Map.merge(source.settings || %{}, changes)
+
+    with {:ok, updated} <- source |> Source.changeset(%{settings: merged}) |> Repo.update() do
+      record_audit_best_effort(%{
+        tenant_id: tenant_id,
+        source_id: updated.id,
+        event_kind: "source_policy_changed",
+        component: "control_panel",
+        actor: Keyword.get(opts, :actor, "Admin"),
+        status: "applied",
+        summary: policy_change_summary(updated, changes),
+        metadata: %{
+          source_type: updated.source_type,
+          source_external_id: updated.source_id,
+          changed_settings: changes
+        },
+        citation_url: updated.permalink_or_url,
+        occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+
+      {:ok, updated}
+    end
+  end
+
+  defp policy_change_summary(source, %{"ingest_bot_messages" => enabled}) do
+    action = if enabled, do: "now ingests", else: "no longer ingests"
+    "#{source.name} #{action} app & bot posts."
+  end
+
+  defp policy_change_summary(source, new_settings) do
+    keys = new_settings |> Map.keys() |> Enum.map_join(", ", &to_string/1)
+    "#{source.name} policy updated: #{keys}."
+  end
+
+  defp stringify_keys(map) do
+    Map.new(map, fn {key, value} -> {to_string(key), value} end)
+  end
+
   def create_memory_item(tenant_id, %Source{tenant_id: tenant_id} = source, attrs) do
     %Item{tenant_id: tenant_id, source_id: source.id}
     |> Item.changeset(Map.put_new(attrs, :source_type, source.source_type))

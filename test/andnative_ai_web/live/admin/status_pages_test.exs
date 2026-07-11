@@ -29,6 +29,41 @@ defmodule AndnativeAiWeb.Admin.StatusPagesTest do
     assert has_element?(slack_view, "#slack-oauth-config-form")
   end
 
+  test "sources page toggles app & bot post ingestion per channel", %{conn: conn} do
+    tenant = Memory.ensure_demo_tenant!()
+
+    {:ok, source} =
+      Memory.upsert_source(tenant.id, %{
+        source_type: "slack_channel",
+        source_id: "CTOGGLE",
+        name: "Slack CTOGGLE",
+        permalink_or_url: "slack://channel/CTOGGLE",
+        status: "ready"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/admin/sources")
+
+    refute AndnativeAi.Memory.Source.ingest_bot_messages?(
+             Memory.get_source!(tenant.id, source.id)
+           )
+
+    view
+    |> element("#toggle-bot-ingestion-#{source.id}")
+    |> render_click()
+
+    assert AndnativeAi.Memory.Source.ingest_bot_messages?(
+             Memory.get_source!(tenant.id, source.id)
+           )
+
+    view
+    |> element("#toggle-bot-ingestion-#{source.id}")
+    |> render_click()
+
+    refute AndnativeAi.Memory.Source.ingest_bot_messages?(
+             Memory.get_source!(tenant.id, source.id)
+           )
+  end
+
   test "Slack page saves OAuth app settings", %{conn: conn} do
     tenant = Memory.ensure_demo_tenant!()
 
