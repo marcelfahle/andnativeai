@@ -171,6 +171,16 @@ defmodule AndnativeAi.Memory do
     )
   end
 
+  @doc "Active (retrievable) memory chunk counts keyed by source id."
+  def active_item_counts_by_source(tenant_id) do
+    Item
+    |> where([item], item.tenant_id == ^tenant_id and is_nil(item.deleted_at))
+    |> group_by([item], item.source_id)
+    |> select([item], {item.source_id, count(item.id)})
+    |> Repo.all()
+    |> Map.new()
+  end
+
   def list_source_memory_items(tenant_id, source_id) do
     Repo.all(
       from item in Item,

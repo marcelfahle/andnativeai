@@ -54,6 +54,7 @@ defmodule AndnativeAiWeb.Router do
     live_session :require_authenticated_user,
       on_mount: [{AndnativeAiWeb.UserAuth, :require_authenticated}] do
       live "/admin/control-plane", Admin.ControlPlaneLive
+      live "/admin/memory", Admin.MemoryMapLive
       live "/admin/agents", Admin.AgentsLive
       live "/admin/sources", Admin.DocumentsLive
       live "/admin/documents", Admin.DocumentsLive
