@@ -160,8 +160,15 @@ Slack thread delivery (`Client.post_message/4` + `Client.upload_file/5`)
 Behavior:
 
 - Intent prefixes come from `AndnativeAi.Actions.ActionKinds` (v1 registry:
-  `echo:` demo kind; extensions register more). Unmatched mentions fall
+  `echo:` demo kind, `research:` deep research). Unmatched mentions fall
   through to the normal governed-memory answer.
+- `research:` submits to the configured `AndnativeAi.Research.Provider`
+  (Perplexity `sonar-deep-research` by default via `PERPLEXITY_API_KEY`;
+  Gemini Deep Research via `GEMINI_API_KEY`), polls until the cited report
+  is ready, and delivers a markdown dossier with a Sources section. It is
+  approval-gated because it spends provider budget; actual cost lands in
+  `cost_cents` and on the `action_completed` event when the provider
+  reports it.
 - The mention gets an immediate threaded ack; the work runs as an Oban job
   (queue `actions`), so it survives restarts and is retried on crashes.
 - Kinds with `requires_approval` pause in `awaiting_approval`; the control

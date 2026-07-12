@@ -68,6 +68,8 @@ flows use these values:
 - `SLACK_SIGNING_SECRET`: reserved for future HTTP Slack endpoints; not used by
   current Socket Mode.
 - `OPENAI_API_KEY` or a future provider-specific LLM/embedding key
+- `PERPLEXITY_API_KEY` (or `GEMINI_API_KEY`) for the `research:` deep-research
+  action; without one, research actions fail with a clear reason
 - `OPENCLAW_GATEWAY_URL` and `OPENCLAW_WORKSPACE_PATH`
 
 Private-channel Slack scopes are intentionally deferred for the one-week proof.

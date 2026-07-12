@@ -12,6 +12,14 @@ defmodule AndnativeAi.Actions.ActionKinds do
       requires_approval: false,
       label: "Echo (demo)",
       ack: "On it — echoing your request back as a document."
+    },
+    "deep_research" => %{
+      prefix: "research:",
+      handler: AndnativeAi.Actions.Handlers.DeepResearch,
+      requires_approval: true,
+      label: "Deep research",
+      ack:
+        "On it — deep research takes a few minutes. I'll post the cited dossier in this thread."
     }
   }
 
