@@ -6,7 +6,7 @@ set dotenv-load := true
 # appliances exist: `just prod_host=deploy@other-box prod-ps`
 prod_host := "andnative-deploy@91.99.49.152"
 prod_dir := "/opt/andnativeai"
-prod_compose := "docker compose -p andnativeai -f hetzner-demo.compose.yml"
+prod_compose := "docker compose --env-file ../.env -p andnativeai -f hetzner-demo.compose.yml"
 prod_url := "https://andnativeai.marcelfahle.net"
 
 # Show available recipes
