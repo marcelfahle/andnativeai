@@ -91,6 +91,11 @@ See `docs/slack-app.md` for the Socket Mode app setup.
   with retrieval state, and expandable chunks with citations.
 - `/admin/prospects` (Discover) captures one painful prospect workflow and
   produces a screen-share-ready evaluation plan with a 90-day roadmap.
+- `/admin/skills` installs governed prompt-pack skills (Agent Skills
+  standard) with per-agent enablement.
+- Slack actions: `research: <topic>` (cited dossier, approval-gated),
+  `write: <task>` (skill x memory draft, approval-gated), `digest:`
+  (weekly governed-memory digest), `echo:` (demo loop).
 
 ## Development Handoff
 

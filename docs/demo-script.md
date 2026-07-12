@@ -1,133 +1,141 @@
-# Demo Recording Script
+# Demo Recording Script (v2)
 
-Scene-by-scene test cases for recording a demo video. Each scene lists the
-exact action, the words/questions to use, and the expected on-screen result.
-`docs/demo-checklist.md` remains the full setup checklist; this file is the
-camera-ready script.
-
-Scenes 4-6 use the control plane, memory map, and channel policy toggle from
-PRs #12-#14; record on a build where those are merged.
+Scene-by-scene test cases for recording a demo video, covering the full
+arc: **Memory → Skills → Actions, all governed**. Each scene lists the
+exact action, the words/questions to use, and the expected on-screen
+result. `docs/demo-checklist.md` is the operational setup; this file is
+the camera-ready script.
 
 ## Pre-flight (off camera)
 
-1. Server running (live Hetzner appliance, or local `just up`), Slack app
-   connected, bot invited to one public test channel (e.g. `#demo-general`).
-   For the live appliance see `docs/demo-checklist.md`.
-2. Reset memory so the story is deterministic:
+1. Live appliance up (`just prod-ps`), Slack app connected, bot invited to
+   one public test channel (e.g. `#demo-general`).
+2. Keys on the box for the full arc: `OPENAI_API_KEY` (model answers,
+   collection proposals, drafts, chunk situating) and `PERPLEXITY_API_KEY`
+   (deep research). Without them the memory scenes still work
+   deterministically; research/write fail honestly.
+3. Reset memory so the story is deterministic:
 
    ```sh
    just prod-demo-reset   # live appliance
    just demo-reset        # local stack
    ```
 
-3. Have `priv/fixtures/demo/handbook.md` (or any short policy Markdown file
-   with one memorable, falsifiable fact) on your desktop, e.g.:
-
-   > Reimbursements above 500 EUR require manager approval.
-
-4. Log in to the admin UI. Keep two windows side by side: Slack on the left,
-   admin UI on the right.
-5. Without `OPENAI_API_KEY` the deterministic fallback answers with the top
-   memory chunk and citations; with a key the answer is model-written. Both
-   demo fine — the citations and audit trail are the story.
+4. Have the 37signals-style handbook folder zipped on your desktop
+   (`company-handbook.zip` — the folder name becomes the proposed
+   collection name), plus `priv/fixtures/skills/cold-email/SKILL.md`.
+5. Windows side by side: Slack left, admin UI right
+   (`just prod-open` opens the control plane).
 
 ## Scene 1 — The empty appliance (30s)
 
 - Open `/admin/control-plane`.
-- Say: "This is a governed AI operator. Right now it knows nothing."
-- Expected: Memory service card shows 0 chunks; the Governed activity
-  timeline shows the teaching empty state ("No evidence yet...").
+- Say: "This is a governed AI operator. Right now it knows nothing, and
+  everything it ever does will land on this timeline."
+- Expected: Memory card shows 0 chunks and the embeddings mode label;
+  Approval gates card says `armed`; the timeline shows the teaching empty
+  state.
 
-## Scene 2 — Knowledge with provenance (60s)
+## Scene 2 — A corpus becomes a collection (75s)
 
-- Go to Sources, upload the handbook file, click Ingest.
-- Switch to `/admin/control-plane` (or have it open in a second tab —
-  events stream in live without refresh).
-- Expected: `Source ingested` and `Memory indexed` events appear at the top
-  of the timeline; Memory service card counts the new chunks.
-- Click the `Source ingested` row.
-- Expected: inspector opens with actor, component, sanitized Evidence
-  (chunk counts, source ids — never file contents), and citation link.
-- Say: "Every change to what the agent knows is recorded as evidence."
+- Sources → **New collection** → upload `company-handbook.zip`.
+- Expected: files stage as they upload ("N documents staged"); click
+  **Review collection** → the classifier proposes *Company handbook /
+  handbook* with a description.
+- Edit the description slightly (show the human is in charge), click
+  **Confirm & ingest**.
+- Expected: collection appears with document counts; the timeline records
+  `Collection confirmed` (governance) plus per-file ingest events; the
+  Memory map (`/admin/memory`) now shows the collection with kind badge,
+  description, and expandable chunks.
+- Say: "The system proposed what this corpus is; a human confirmed it.
+  From now on every answer can say *per the employee handbook*."
 
 ## Scene 3 — A cited answer in Slack (60s)
 
-- In the test channel, ask:
+- In the test channel:
 
   > @andnative-ai When do reimbursements need manager approval?
 
-- Expected in Slack: an answer containing "above 500 ... manager approval"
-  with a citation link back to the handbook source.
-- Switch to the control plane.
-- Expected: a burst of new events — `Slack mention`, `Memory searched`,
-  `Answer generated`, `Citation attached`, `Slack response posted` — all
-  sharing one request id.
-- Click any of them; walk the Request trace in the inspector (relative
-  offsets show the whole answer took ~a second).
-- Say: "One question, five pieces of evidence, one request id. This is what
-  'not freewheeling through your company data' looks like."
+- Expected in Slack: an answer with the handbook fact and a citation link.
+- Control plane: `Slack mention → Memory searched → Answer generated →
+  Citation attached → Response posted` stream in live under one request
+  id; click one and walk the trace in the inspector.
 
-## Scene 4 — What is it allowed to know? (45s)
+## Scene 4 — Governed forgetting (60s, the trust moment)
 
-- Open `/admin/memory`.
-- Expected: Slack channels and Documents groups with chunk counts; the
-  handbook expands to show its chunks, each with retention, visibility, and
-  a citation link. The "Function & person scope" card is explicitly labeled
-  *planned* — nothing pretends ACLs exist.
-- Say: "The memory map is the honest answer to 'what does it know and
-  where did that come from'."
+- Delete the handbook **collection** in Sources (one click removes the
+  whole corpus).
+- Expected: `Collection deleted` + per-source `Source deleted` events; the
+  memory map shows every handbook file struck through.
+- Re-ask the exact same question in Slack → "could not find a relevant
+  source."
+- Say: "Deleted means deleted — at corpus granularity, with evidence for
+  both moments." (Re-upload the collection off camera if later scenes need
+  it.)
 
-## Scene 5 — Governed forgetting (90s, the money shot)
+## Scene 5 — The agent does work: deep research (2-3 min real time)
 
-- Say: "Now the part every buyer asks about: deletion."
-- In Sources, delete the handbook (confirm the dialog).
-- Expected: control plane records `Source deleted`; the memory map now
-  shows the handbook struck through, "deleted — excluded from retrieval",
-  with 0 chunks in retrieval.
-- Back in Slack, ask the exact same question again:
+- In the test channel:
 
-  > @andnative-ai When do reimbursements need manager approval?
+  > @andnative-ai research: what are SME buyers saying about governed AI assistants in 2026?
 
-- Expected: the bot answers that it could not find a relevant source — no
-  citation, no half-remembered answer.
-- Say: "Same question, sixty seconds later. Deleted means deleted, and the
-  audit trail proves both moments."
-- (This exact cycle is also enforced in CI:
-  `test/andnative_ai/demo/acceptance_test.exs`.)
+- Expected: threaded ack — "this needs a human approval first."
+- Control plane: the **Awaiting your approval** panel shows the action;
+  click **Approve & run**.
+- Say: "Anything that spends money or leaves the building pauses for a
+  human. The click itself is evidence."
+- Expected: `Action approved → started` on the timeline; a few minutes
+  later a summary message plus a markdown **research dossier with a
+  Sources section** lands in the thread; `Action completed` records
+  provider, citation count, and actual cost.
+- (While waiting, film Scene 6.)
 
-## Scene 6 — Policy, not vibes (45s, optional)
+## Scene 6 — Skills: teach the agent HOW (60s)
 
-- In Sources → Slack channels, flip "App & bot posts" ON for the test
-  channel.
-- Expected: a `Policy changed` governance event appears on the timeline
-  with the changed setting in Evidence.
-- Have a Linear notification post into the channel (or paste one from a
-  connected Linear workspace), then ask:
+- Open `/admin/skills`, upload `cold-email/SKILL.md`, install.
+- Expected: skill listed with version hash and MIT license; toggle it on
+  for the demo agent → `Skill installed` / `Skill enabled` governance
+  events.
+- Optional flex: try installing a bundle containing a `scripts/` folder →
+  rejected with a clear reason, and even the rejection is on the timeline.
+- Say: "Skills are the open standard the whole ecosystem ships — we run
+  the prompt-only kind, version-pinned, per-agent, and fully audited."
 
-  > @andnative-ai did we add MiniMax?
+## Scene 7 — Skills × memory: a grounded draft (90s)
 
-- Expected: the answer cites the Slack permalink of the Linear
-  notification.
-- Say: "Even which machine messages become memory is an explicit,
-  audited policy decision."
+- In the test channel:
 
-## Scene 7 — Close (15s)
+  > @andnative-ai write: cold-email for ops leads at manufacturing SMEs
 
-- Return to the control plane, top of page.
-- Say: "Sources connected, answers with citations, evidence for every
-  action, and honest labels on everything we estimate. This is the
-  appliance we install inside your company."
+- Approve it on the control plane.
+- Expected: a draft document in the thread — skill + version stamped in
+  the header, a Sources section citing the company memory it used; the
+  trace shows `Skill used (cold-email vXXXX)` alongside the action events.
+- Say: "The skill said HOW to write it; our governed memory said WHAT is
+  true. And the audit trail shows exactly which skill and which sources
+  shaped this draft."
+
+## Scene 8 — Close on the timeline (30s)
+
+- Control plane, filter chips: click **Governance** — collection
+  confirmations, deletions, skill installs, approvals. Click **Actions** —
+  the research and write lifecycles.
+- Say: "Memory, skills, actions — one appliance, one audit trail. That's
+  what governed means."
+
+## Bonus scenes (if time)
+
+- **Per-channel app-post policy**: Sources → toggle "App & bot posts" →
+  `Policy changed` event; a Linear notification becomes citable memory.
+- **Weekly digest**: `@andnative-ai digest: this week` → the weekly
+  governed-memory digest posts on demand (it also runs Monday 08:00 UTC).
+- **Echo (rehearsal)**: `@andnative-ai echo: hello` — the fastest way to
+  show the mention → job → document → trace loop with zero spend.
 
 ## Reset between takes
 
 ```sh
-just prod-demo-reset   # live appliance
-just demo-reset        # local stack
-```
-
-Then re-invite/backfill the Slack channel if needed:
-
-```sh
-just prod-demo-backfill C0123456789   # live appliance
-just demo-backfill C0123456789        # local stack
+just prod-demo-reset                  # live appliance
+just prod-demo-backfill C0123456789   # re-ingest the demo channel
 ```
