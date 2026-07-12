@@ -305,3 +305,21 @@ Why:
   guard prevents nonsense results in the meantime. Failing ingest outright
   was rejected: losing a customer upload is worse than a temporarily
   degraded ranking.
+
+## DEC-019: No Placeholder Services in Compose
+
+The `memory-service` and `openclaw-gateway` placeholder containers (idle
+shell loops from the original scaffold) are removed from the dev Compose
+file; the prod appliance Compose never shipped them. The memory service
+and the OpenClaw adapter genuinely run inside the `control-panel` and
+`slack-listener` releases, and the deploy surface should say so.
+
+Why:
+
+- An appliance that ships containers that do nothing invites the wrong
+  question in a security or procurement review ("what does this one do?").
+- Extracting a real gateway service (AAI-22 option 1) has no current
+  consumer: the adapter boundary (`RuntimeAdapter` behaviour +
+  `OPENCLAW_GATEWAY_URL` env) is preserved in code, so a future split is
+  additive — reintroduce a service, point the URL at it.
+- One fewer build target keeps `docker compose up` and CI honest and fast.
