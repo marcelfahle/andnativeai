@@ -1,4 +1,6 @@
 defmodule AndnativeAi.Runtime.Responder do
+  alias AndnativeAi.Actions
+  alias AndnativeAi.Actions.ActionKinds
   alias AndnativeAi.Memory
   alias AndnativeAi.Runtime.Audit
   alias AndnativeAi.Runtime.OpenClaw
@@ -11,22 +13,72 @@ defmodule AndnativeAi.Runtime.Responder do
       request_id = Audit.request_id_from_event(slack_event)
       slack_event = Map.put(slack_event, "_andnative_request_id", request_id)
 
-      record_mention_received(tenant_id, agent, slack_event, request_id)
+      case ActionKinds.match_intent(slack_event["text"]) do
+        {:ok, kind, argument} ->
+          dispatch_action(tenant_id, agent, slack_event, request_id, kind, argument, opts)
 
-      case adapter.dispatch_mention(agent, slack_event) do
-        {:ok, response} ->
-          slack_event
-          |> maybe_post_response(response.answer, opts)
-          |> record_post_result(tenant_id, agent, slack_event, request_id)
-
-          {:ok, Map.put_new(response, :request_id, request_id)}
-
-        {:error, reason} ->
-          record_runtime_error(tenant_id, agent, request_id, reason)
-          {:error, reason}
+        :error ->
+          answer_from_memory(tenant_id, agent, adapter, slack_event, request_id, opts)
       end
     else
       {:ignored, :not_mentioned}
+    end
+  end
+
+  defp answer_from_memory(tenant_id, agent, adapter, slack_event, request_id, opts) do
+    record_mention_received(tenant_id, agent, slack_event, request_id)
+
+    case adapter.dispatch_mention(agent, slack_event) do
+      {:ok, response} ->
+        slack_event
+        |> maybe_post_response(response.answer, opts)
+        |> record_post_result(tenant_id, agent, slack_event, request_id)
+
+        {:ok, Map.put_new(response, :request_id, request_id)}
+
+      {:error, reason} ->
+        record_runtime_error(tenant_id, agent, request_id, reason)
+        {:error, reason}
+    end
+  end
+
+  defp dispatch_action(tenant_id, agent, slack_event, request_id, kind, argument, opts) do
+    case Actions.request_action(tenant_id, %{
+           kind: kind,
+           agent_id: agent.id,
+           input_summary: String.slice(argument, 0, 250),
+           input: %{"argument" => argument},
+           request_id: request_id,
+           slack_channel_id: slack_event["channel"],
+           slack_thread_ts: slack_event["thread_ts"] || slack_event["ts"]
+         }) do
+      {:ok, action} ->
+        ack =
+          case action.status do
+            "awaiting_approval" ->
+              "Got it — this action needs a human approval first. It's waiting on the control plane."
+
+            _queued ->
+              case ActionKinds.fetch(kind) do
+                {:ok, %{ack: ack}} -> ack
+                :error -> "On it — I'll post the result in this thread."
+              end
+          end
+
+        maybe_post_response(slack_event, ack, opts)
+
+        {:ok, %{action: action, request_id: request_id}}
+
+      {:error, reason} ->
+        record_runtime_error(tenant_id, agent, request_id, reason)
+
+        maybe_post_response(
+          slack_event,
+          "I couldn't start that action — the error is on the audit timeline.",
+          opts
+        )
+
+        {:error, reason}
     end
   end
 

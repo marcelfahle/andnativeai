@@ -3,6 +3,7 @@ defmodule AndnativeAi.ControlPlane do
   Builds the governed-memory control-plane snapshot from current tenant state.
   """
 
+  alias AndnativeAi.Actions
   alias AndnativeAi.Memory
   alias AndnativeAi.Runtime.{Audit, AuditEventKinds, OpenClaw}
   alias AndnativeAi.Slack.Installations
@@ -22,6 +23,7 @@ defmodule AndnativeAi.ControlPlane do
       |> Enum.map(&audit_event/1)
 
     counts = counts(source_counts, memory_items_count, installations_count)
+    pending_approvals = Actions.list_pending_approvals(tenant.id)
 
     %{
       status_cards:
@@ -29,11 +31,13 @@ defmodule AndnativeAi.ControlPlane do
           agents: agents,
           counts: counts,
           agent_health: agent_health,
-          audit_events: audit_events
+          audit_events: audit_events,
+          pending_approvals_count: length(pending_approvals)
         }),
       audit_events: audit_events,
       summary: summary(agents, counts, agent_health, audit_events),
-      outcomes: outcomes(tenant.id, counts)
+      outcomes: outcomes(tenant.id, counts),
+      pending_approvals: pending_approvals
     }
   end
 
@@ -137,7 +141,8 @@ defmodule AndnativeAi.ControlPlane do
          agents: agents,
          counts: counts,
          agent_health: agent_health,
-         audit_events: audit_events
+         audit_events: audit_events,
+         pending_approvals_count: pending_approvals_count
        }) do
     synced_agents = Enum.count(agent_health, & &1.config_exists?)
     paused_agents = Enum.count(agents, &paused?/1)
@@ -197,11 +202,11 @@ defmodule AndnativeAi.ControlPlane do
         id: "approval",
         icon: "hero-pause-circle",
         name: "Approval gates",
-        state: if(paused_agents == 0, do: "not configured", else: "paused"),
-        tone: if(paused_agents == 0, do: :neutral, else: :warning),
-        metric: "#{paused_agents} waiting",
-        detail: "No live approval workflow is wired in this PoC yet",
-        mode: if(paused_agents == 0, do: :deferred, else: :live)
+        state: approval_state(pending_approvals_count, paused_agents),
+        tone: if(pending_approvals_count > 0, do: :warning, else: :ready),
+        metric: "#{pending_approvals_count} waiting",
+        detail: "Actions that spend money or face outward pause here for a human decision",
+        mode: if(pending_approvals_count == 0, do: :live, else: :live)
       }
     ]
   end
@@ -268,6 +273,9 @@ defmodule AndnativeAi.ControlPlane do
   defp runtime_tone([], _synced_agents), do: :empty
   defp runtime_tone(_agents, 0), do: :warning
   defp runtime_tone(_agents, _synced_agents), do: :ready
+
+  defp approval_state(0, _paused_agents), do: "armed"
+  defp approval_state(_count, _paused_agents), do: "awaiting decision"
 
   defp card_mode(true), do: :live
   defp card_mode(false), do: :empty

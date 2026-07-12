@@ -22,7 +22,8 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLiveTest do
     assert has_element?(view, "#status-card-openclaw-runtime")
     assert has_element?(view, "#status-card-document-source[data-status-mode='empty']")
     assert has_element?(view, "#status-card-runtime-activity[data-status-mode='empty']")
-    assert has_element?(view, "#status-card-approval[data-status-mode='deferred']")
+    assert has_element?(view, "#status-card-approval[data-status-mode='live']")
+    assert has_element?(view, "#status-card-approval", "armed")
     assert has_element?(view, "#audit-timeline-empty")
 
     refute has_element?(view, "#control-plane-dashboard", "demo fallback")
@@ -243,6 +244,43 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLiveTest do
     assert render(view) =~ "Alpha Agent generated a governed answer."
     assert has_element?(view, "#audit-timeline [data-audit-kind='answer_generated']")
     refute has_element?(view, "#audit-timeline-empty")
+  end
+
+  test "pending approvals surface on the control plane and can be approved", %{conn: conn} do
+    tenant = Memory.ensure_demo_tenant!()
+
+    Application.put_env(:andnative_ai, :extra_action_kinds, %{
+      "gated" => %{
+        prefix: "gated:",
+        handler: AndnativeAi.Actions.Handlers.Echo,
+        requires_approval: true,
+        label: "Gated (test)",
+        ack: "Queued for approval."
+      }
+    })
+
+    on_exit(fn -> Application.delete_env(:andnative_ai, :extra_action_kinds) end)
+
+    {:ok, action} =
+      AndnativeAi.Actions.request_action(tenant.id, %{
+        kind: "gated",
+        input_summary: "research competitor pricing",
+        request_id: "req-cp-approve-1"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/admin/control-plane")
+
+    assert has_element?(view, "#pending-approvals")
+    assert has_element?(view, "#pending-action-#{action.id}", "research competitor pricing")
+    assert has_element?(view, "#status-card-approval", "awaiting decision")
+
+    view
+    |> element("#approve-action-#{action.id}")
+    |> render_click()
+
+    refute has_element?(view, "#pending-approvals")
+    assert AndnativeAi.Actions.get_action!(tenant.id, action.id).status == "queued"
+    assert has_element?(view, "#audit-timeline [data-audit-kind='action_approved']")
   end
 
   test "timeline paginates older events with load more", %{conn: conn} do

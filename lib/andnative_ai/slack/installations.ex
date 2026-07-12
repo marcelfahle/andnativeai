@@ -35,6 +35,27 @@ defmodule AndnativeAi.Slack.Installations do
     )
   end
 
+  @doc """
+  Resolves bot credentials for outbound Slack calls: the latest OAuth
+  installation first, `SLACK_BOT_TOKEN`/`SLACK_BOT_USER_ID` env fallback
+  second. Returns `{:ok, bot_token, bot_user_id}` or `:error`.
+  """
+  def bot_credentials(tenant_id) do
+    case latest_installation(tenant_id) do
+      %{bot_token: token, bot_user_id: user_id}
+      when is_binary(token) and token != "" and is_binary(user_id) and user_id != "" ->
+        {:ok, token, user_id}
+
+      _no_installation ->
+        with token when token != "" <- System.get_env("SLACK_BOT_TOKEN", ""),
+             user_id when user_id != "" <- System.get_env("SLACK_BOT_USER_ID", "") do
+          {:ok, token, user_id}
+        else
+          _missing -> :error
+        end
+    end
+  end
+
   def get_active_by_team_id(nil), do: nil
 
   def get_active_by_team_id(team_id) do

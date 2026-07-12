@@ -45,6 +45,7 @@ defmodule AndnativeAi.MixProject do
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
       {:pgvector, "~> 0.4.0"},
+      {:oban, "~> 2.18"},
       {:req, "~> 0.6.2"},
       {:websockex, "~> 0.5.1"},
       {:phoenix_html, "~> 4.1"},

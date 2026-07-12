@@ -13,6 +13,11 @@ config :andnative_ai,
 
 config :andnative_ai, AndnativeAi.Repo, types: AndnativeAi.PostgrexTypes
 
+config :andnative_ai, Oban,
+  engine: Oban.Engines.Basic,
+  repo: AndnativeAi.Repo,
+  queues: [actions: 5]
+
 # Configures the endpoint
 config :andnative_ai, AndnativeAiWeb.Endpoint,
   url: [host: "localhost"],

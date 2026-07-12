@@ -147,6 +147,35 @@ Behavior:
   for the control plane. These writes are best-effort so memory changes do not
   roll back if audit persistence is temporarily unavailable.
 
+### Agent Actions
+
+Path:
+Slack mention with an intent prefix ->
+`AndnativeAi.Runtime.Responder` (intent match) ->
+`AndnativeAi.Actions.request_action/2` ->
+Oban `AndnativeAi.Actions.Worker` ->
+kind handler (`AndnativeAi.Actions.Handler` behaviour) ->
+Slack thread delivery (`Client.post_message/4` + `Client.upload_file/5`)
+
+Behavior:
+
+- Intent prefixes come from `AndnativeAi.Actions.ActionKinds` (v1 registry:
+  `echo:` demo kind; extensions register more). Unmatched mentions fall
+  through to the normal governed-memory answer.
+- The mention gets an immediate threaded ack; the work runs as an Oban job
+  (queue `actions`), so it survives restarts and is retried on crashes.
+- Kinds with `requires_approval` pause in `awaiting_approval`; the control
+  plane lists them with Approve/Deny (audited as
+  `action_approved`/`action_denied`), and only approval enqueues the job.
+- Deliverables persist under `RAW_SOURCES_PATH/actions/` and are posted to
+  the thread as a summary message plus a markdown file (external upload
+  flow; `files.upload` is retired).
+- Handler failures cancel the job (no silent budget re-spend), notify the
+  thread, and record `action_failed` with a sanitized reason.
+- All action audit events share the Slack request id, so the control-plane
+  inspector shows the full mention -> approval -> execution -> delivery
+  trace. Timeline chips gain an Actions category.
+
 ### Memory Search
 
 Path:

@@ -25,6 +25,8 @@ config :andnative_ai, AndnativeAiWeb.Endpoint,
 config :bcrypt_elixir, :log_rounds, 1
 
 # Capture emails in memory so tests can assert on them.
+config :andnative_ai, Oban, testing: :manual
+
 config :andnative_ai, AndnativeAi.Mailer, adapter: Swoosh.Adapters.Test
 
 # Print only warnings and errors during test

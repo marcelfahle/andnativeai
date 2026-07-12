@@ -71,6 +71,42 @@ defmodule AndnativeAi.Runtime.AuditEventKinds do
       tone: :ready,
       category: :runtime
     },
+    "action_requested" => %{
+      label: "Action requested",
+      icon: "hero-bolt",
+      tone: :ready,
+      category: :actions
+    },
+    "action_approved" => %{
+      label: "Action approved",
+      icon: "hero-hand-thumb-up",
+      tone: :ready,
+      category: :actions
+    },
+    "action_denied" => %{
+      label: "Action denied",
+      icon: "hero-hand-raised",
+      tone: :warning,
+      category: :actions
+    },
+    "action_started" => %{
+      label: "Action started",
+      icon: "hero-play",
+      tone: :ready,
+      category: :actions
+    },
+    "action_completed" => %{
+      label: "Action completed",
+      icon: "hero-check-circle",
+      tone: :ready,
+      category: :actions
+    },
+    "action_failed" => %{
+      label: "Action failed",
+      icon: "hero-exclamation-triangle",
+      tone: :error,
+      category: :actions
+    },
     "slack_response_failed" => %{
       label: "Slack response failed",
       icon: "hero-exclamation-triangle",
@@ -88,6 +124,7 @@ defmodule AndnativeAi.Runtime.AuditEventKinds do
   @categories [
     %{key: :memory, label: "Memory"},
     %{key: :runtime, label: "Runtime"},
+    %{key: :actions, label: "Actions"},
     %{key: :governance, label: "Governance"},
     %{key: :errors, label: "Errors"}
   ]

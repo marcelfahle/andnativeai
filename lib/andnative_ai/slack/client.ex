@@ -40,6 +40,43 @@ defmodule AndnativeAi.Slack.Client do
     })
   end
 
+  @doc """
+  Uploads a file into a channel thread using the external upload flow
+  (`files.upload` is retired): get an upload URL, POST the bytes, complete
+  the upload with the share target.
+  """
+  def upload_file(bot_token, channel_id, thread_ts, filename, content) do
+    with {:ok, %{"upload_url" => upload_url, "file_id" => file_id}} <-
+           get("/files.getUploadURLExternal", bot_token, %{
+             filename: filename,
+             length: byte_size(content)
+           }),
+         {:ok, _response} <- put_bytes(upload_url, content),
+         {:ok, body} <-
+           post(
+             "/files.completeUploadExternal",
+             bot_token,
+             %{
+               files: [%{id: file_id, title: filename}],
+               channel_id: channel_id
+             }
+             |> maybe_put_thread_ts(thread_ts)
+           ) do
+      {:ok, body}
+    end
+  end
+
+  defp put_bytes(upload_url, content) do
+    case Req.request(method: :post, url: upload_url, body: content) do
+      {:ok, %{status: status}} when status in 200..299 -> {:ok, :uploaded}
+      {:ok, %{status: status}} -> {:error, {:upload_failed, status}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp maybe_put_thread_ts(body, thread_ts) when thread_ts in [nil, ""], do: body
+  defp maybe_put_thread_ts(body, thread_ts), do: Map.put(body, :thread_ts, thread_ts)
+
   def oauth_v2_access(client_id, client_secret, code, redirect_uri) do
     params =
       %{

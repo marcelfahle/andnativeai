@@ -12,7 +12,8 @@ defmodule AndnativeAi.Application do
         AndnativeAiWeb.Telemetry,
         AndnativeAi.Repo,
         {DNSCluster, query: Application.get_env(:andnative_ai, :dns_cluster_query) || :ignore},
-        {Phoenix.PubSub, name: AndnativeAi.PubSub}
+        {Phoenix.PubSub, name: AndnativeAi.PubSub},
+        {Oban, Application.fetch_env!(:andnative_ai, Oban)}
       ] ++ service_children() ++ [AndnativeAiWeb.Endpoint]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

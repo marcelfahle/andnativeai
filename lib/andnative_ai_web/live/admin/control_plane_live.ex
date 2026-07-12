@@ -1,6 +1,7 @@
 defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
   use AndnativeAiWeb, :live_view
 
+  alias AndnativeAi.Actions
   alias AndnativeAi.ControlPlane
   alias AndnativeAi.Memory
   alias AndnativeAi.Runtime.Audit
@@ -102,6 +103,35 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
      |> assign(:trace, [])}
   end
 
+  def handle_event("approve-action", %{"id" => id}, socket) do
+    {:noreply,
+     decide_action(socket, id, &Actions.approve_action/3, "Action approved and queued.")}
+  end
+
+  def handle_event("deny-action", %{"id" => id}, socket) do
+    {:noreply, decide_action(socket, id, &Actions.deny_action/3, "Action denied.")}
+  end
+
+  defp decide_action(socket, id, decide, success_message) do
+    approver = socket.assigns.current_user.email
+
+    result =
+      case Integer.parse(to_string(id)) do
+        {action_id, ""} -> decide.(socket.assigns.tenant.id, action_id, approver)
+        _invalid -> {:error, :invalid_id}
+      end
+
+    case result do
+      {:ok, _action} ->
+        socket |> reload_snapshot() |> put_flash(:info, success_message)
+
+      {:error, _reason} ->
+        socket
+        |> reload_snapshot()
+        |> put_flash(:error, "That action can no longer be decided — it may already be resolved.")
+    end
+  end
+
   @impl true
   def handle_info({:audit_event_recorded, event}, socket) do
     presented = ControlPlane.present_recorded_event(event)
@@ -124,6 +154,18 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
         socket
       end
 
+    # Action events change the approval queue; keep it live.
+    socket =
+      if presented.category == :actions do
+        assign(
+          socket,
+          :pending_approvals,
+          Actions.list_pending_approvals(socket.assigns.tenant.id)
+        )
+      else
+        socket
+      end
+
     {:noreply, socket}
   end
 
@@ -134,6 +176,7 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
     |> assign(:status_cards, snapshot.status_cards)
     |> assign(:summary, snapshot.summary)
     |> assign(:outcomes, snapshot.outcomes)
+    |> assign(:pending_approvals, snapshot.pending_approvals)
     |> assign(:event_counts, Audit.category_counts(socket.assigns.tenant.id))
   end
 
@@ -318,6 +361,57 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
 
           <div id="control-plane-status-grid" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <.status_card :for={card <- @status_cards} card={card} />
+          </div>
+        </section>
+
+        <section
+          :if={@pending_approvals != []}
+          id="pending-approvals"
+          class="rounded-lg border border-warning/40 bg-base-100"
+        >
+          <div class="flex items-center justify-between border-b border-base-300 px-5 py-4">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-pause-circle" class="size-4 text-warning" />
+              <h2 class="text-base font-semibold">Awaiting your approval</h2>
+            </div>
+            <span class="text-xs tabular-nums text-base-content/50">
+              {length(@pending_approvals)}
+            </span>
+          </div>
+          <div class="divide-y divide-base-300/70">
+            <div
+              :for={action <- @pending_approvals}
+              id={"pending-action-#{action.id}"}
+              class="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+            >
+              <div class="min-w-0">
+                <p class="text-sm font-medium">{action.kind}: {action.input_summary}</p>
+                <p class="mt-0.5 font-mono text-[11px] tabular-nums text-base-content/45">
+                  requested {Calendar.strftime(action.inserted_at, "%b %d, %H:%M UTC")}
+                  <span :if={action.request_id}>
+                    &middot; req {String.slice(action.request_id, 0, 18)}
+                  </span>
+                </p>
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                <button
+                  id={"deny-action-#{action.id}"}
+                  phx-click="deny-action"
+                  phx-value-id={action.id}
+                  class="btn btn-ghost btn-xs text-error"
+                >
+                  Deny
+                </button>
+                <button
+                  id={"approve-action-#{action.id}"}
+                  phx-click="approve-action"
+                  phx-value-id={action.id}
+                  class="btn btn-primary btn-xs"
+                >
+                  Approve &amp; run
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 

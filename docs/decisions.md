@@ -229,3 +229,27 @@ Why:
   needs no schema change to items.
 - Machine suggests, human decides — corpus classification is a governance
   decision and belongs on the timeline.
+
+## DEC-016: Actions Are Governed Background Jobs
+
+Agent actions (deep research, writing tasks) are requested in Slack via
+intent prefixes (`echo:`, `research:`, ...), persisted as `agent_actions`,
+executed by Oban workers, and delivered back to the requesting thread as a
+summary message plus a markdown file. Every transition is audit evidence
+(`action_requested/approved/denied/started/completed/failed`) sharing the
+Slack request id. Action kinds that spend money or produce outward-facing
+output pause in `awaiting_approval` until a human approves on the control
+plane — the Approval gates card is now live, and approve/deny decisions are
+themselves audit events.
+
+Why:
+
+- Long-running work must survive restarts and retries: Oban is
+  Postgres-backed, so the appliance gains no new infrastructure.
+- "Not freewheeling" extends from answers to work: one request id ties the
+  mention, the approval, the execution, and the deliverable together.
+- Failed actions are cancelled rather than auto-retried so provider budget
+  is never re-spent without a human deciding.
+
+Caveat: deliverables are posted as `.md` file uploads (external upload
+flow); Slack renders those as plain text. Canvas rendering is a follow-up.
