@@ -25,13 +25,15 @@ Memory.ensure_demo_tenant!()
 # password is NOT reset). To rotate or add a user, use the in-app reset/invite
 # flows, or Accounts.register_user/1 from `iex -S mix`.
 seed_admins = [
+  # Generic first admin for provisioned appliances (provision-appliance.sh).
+  %{email: System.get_env("SEED_ADMIN_EMAIL"), password_env: "SEED_ADMIN_PASSWORD"},
   %{email: System.get_env("SEED_MATT_EMAIL"), password_env: "SEED_MATT_PASSWORD"}
 ]
 
 for %{email: email, password_env: password_env} <- seed_admins do
   cond do
     is_nil(email) ->
-      IO.puts("• Skipping an admin: set SEED_MATT_EMAIL (and its password) to seed Matt.")
+      IO.puts("• Skipping an admin: no email set for this seed slot.")
 
     Accounts.get_user_by_email(email) ->
       IO.puts("• Admin #{email} already exists; leaving unchanged.")
