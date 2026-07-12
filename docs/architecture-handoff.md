@@ -160,8 +160,18 @@ Slack thread delivery (`Client.post_message/4` + `Client.upload_file/5`)
 Behavior:
 
 - Intent prefixes come from `AndnativeAi.Actions.ActionKinds` (v1 registry:
-  `echo:` demo kind, `research:` deep research). Unmatched mentions fall
-  through to the normal governed-memory answer.
+  `echo:` demo kind, `research:` deep research, `write:` drafts,
+  `digest:` on-demand weekly digest). Unmatched mentions fall through to
+  the normal governed-memory answer.
+- `write:` composes an enabled skill (HOW) with governed memory (WHAT —
+  preferring a `product` collection when one exists), drafts via the
+  configured OpenAI model, cites the memory used, and records
+  `skill_used` on the trace. Approval-gated: the output is
+  outward-facing.
+- A weekly digest (Oban cron, Monday 08:00 UTC) posts what entered
+  memory, what was answered, and the week's governance decisions to each
+  tenant's most recently active Slack channel — pure database reads, no
+  external spend.
 - `research:` submits to the configured `AndnativeAi.Research.Provider`
   (Perplexity `sonar-deep-research` by default via `PERPLEXITY_API_KEY`;
   Gemini Deep Research via `GEMINI_API_KEY`), polls until the cited report

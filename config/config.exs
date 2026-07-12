@@ -16,7 +16,11 @@ config :andnative_ai, AndnativeAi.Repo, types: AndnativeAi.PostgrexTypes
 config :andnative_ai, Oban,
   engine: Oban.Engines.Basic,
   repo: AndnativeAi.Repo,
-  queues: [actions: 5]
+  queues: [actions: 5],
+  plugins: [
+    # Monday 08:00 UTC: weekly governed-memory digest per tenant.
+    {Oban.Plugins.Cron, crontab: [{"0 8 * * 1", AndnativeAi.Actions.DigestScheduler}]}
+  ]
 
 # Configures the endpoint
 config :andnative_ai, AndnativeAiWeb.Endpoint,
