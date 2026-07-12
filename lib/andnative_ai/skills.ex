@@ -40,15 +40,26 @@ defmodule AndnativeAi.Skills do
           })
           |> Repo.insert_or_update()
 
-        with {:ok, skill} <- result do
-          record_event(tenant_id, "skill_installed", %{
-            actor: actor,
-            status: "installed",
-            summary: "Skill \"#{skill.name}\" v#{skill.version} was installed.",
-            metadata: %{skill: skill.name, version: skill.version, license: skill.license}
-          })
+        case result do
+          {:ok, skill} ->
+            record_event(tenant_id, "skill_installed", %{
+              actor: actor,
+              status: "installed",
+              summary: "Skill \"#{skill.name}\" v#{skill.version} was installed.",
+              metadata: %{skill: skill.name, version: skill.version, license: skill.license}
+            })
 
-          {:ok, skill}
+            {:ok, skill}
+
+          {:error, changeset} ->
+            record_event(tenant_id, "skill_rejected", %{
+              actor: actor,
+              status: "rejected",
+              summary: "A skill bundle was rejected: invalid skill attributes.",
+              metadata: %{reason: Audit.reason_summary(changeset.errors)}
+            })
+
+            {:error, changeset}
         end
 
       {:error, reason} ->
@@ -103,18 +114,22 @@ defmodule AndnativeAi.Skills do
 
   def enable_for_agent(tenant_id, skill_id, agent_id, opts \\ []) do
     skill = get_skill!(tenant_id, skill_id)
+    # Raises unless the agent belongs to the same tenant — no cross-tenant
+    # skill leakage.
+    agent = AndnativeAi.Memory.get_agent!(tenant_id, agent_id)
 
     Repo.insert_all(
       "agent_skills",
       [
         [
-          agent_id: agent_id,
+          agent_id: agent.id,
           skill_id: skill.id,
           inserted_at: utc_now(),
           updated_at: utc_now()
         ]
       ],
-      on_conflict: :nothing
+      on_conflict: :nothing,
+      conflict_target: [:agent_id, :skill_id]
     )
 
     record_event(tenant_id, "skill_enabled", %{
@@ -130,6 +145,8 @@ defmodule AndnativeAi.Skills do
 
   def disable_for_agent(tenant_id, skill_id, agent_id, opts \\ []) do
     skill = get_skill!(tenant_id, skill_id)
+    agent = AndnativeAi.Memory.get_agent!(tenant_id, agent_id)
+    agent_id = agent.id
 
     Repo.delete_all(
       from(join in "agent_skills",

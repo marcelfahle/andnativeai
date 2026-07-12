@@ -28,15 +28,17 @@ defmodule AndnativeAi.Runtime.OpenClaw do
         enabled_skills = Skills.enabled_skills(agent.id)
         selected_skill = Skills.select_for_text(enabled_skills, question)
 
-        if selected_skill do
-          Skills.record_skill_used(agent.tenant_id, agent.id, request_id, selected_skill)
-        end
-
         response =
           compose_response(agent, question, results, %{
             enabled: enabled_skills,
             selected: selected_skill
           })
+
+        # Only claim the skill shaped the answer when the model actually
+        # ran with it; deterministic fallbacks never see skill bodies.
+        if selected_skill && response.status == "model" do
+          Skills.record_skill_used(agent.tenant_id, agent.id, request_id, selected_skill)
+        end
 
         record_answer_generated(agent, request_id, response, results)
         record_model_runtime_error(agent, request_id, response)

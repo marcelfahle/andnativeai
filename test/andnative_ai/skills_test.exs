@@ -1,5 +1,5 @@
 defmodule AndnativeAi.SkillsTest do
-  use AndnativeAi.DataCase, async: true
+  use AndnativeAi.DataCase, async: false
 
   alias AndnativeAi.Memory
   alias AndnativeAi.Runtime.Audit
@@ -149,9 +149,30 @@ defmodule AndnativeAi.SkillsTest do
     assert "skill_disabled" in kinds
   end
 
+  defmodule FakeModelClient do
+    def response(request) do
+      send(Application.fetch_env!(:andnative_ai, :test_notify_pid), {:model_request, request})
+      {:ok, "Drafted with the skill."}
+    end
+  end
+
   test "a request naming an enabled skill records skill_used on the trace" do
     tenant = tenant_fixture("skills-trace")
     agent = agent_fixture(tenant)
+
+    Application.put_env(:andnative_ai, :test_notify_pid, self())
+    Application.put_env(:andnative_ai, :openai_client, FakeModelClient)
+    previous_key = System.get_env("OPENAI_API_KEY")
+    System.put_env("OPENAI_API_KEY", "sk-test-key")
+
+    on_exit(fn ->
+      Application.delete_env(:andnative_ai, :test_notify_pid)
+      Application.delete_env(:andnative_ai, :openai_client)
+
+      if previous_key,
+        do: System.put_env("OPENAI_API_KEY", previous_key),
+        else: System.delete_env("OPENAI_API_KEY")
+    end)
 
     {:ok, skill} = Skills.install(tenant.id, fixture_files())
     :ok = Skills.enable_for_agent(tenant.id, skill.id, agent.id)
@@ -170,6 +191,10 @@ defmodule AndnativeAi.SkillsTest do
     assert used
     assert used.metadata["skill"] == "cold-email"
     assert used.metadata["version"] == skill.version
+
+    # The model actually received the skill body.
+    assert_received {:model_request, request}
+    assert request.instructions =~ "Subject lines under 6 words"
 
     # A question that names no skill records nothing.
     {:ok, _response} =
