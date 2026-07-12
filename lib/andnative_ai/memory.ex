@@ -157,6 +157,17 @@ defmodule AndnativeAi.Memory do
     Repo.get_by(Source, tenant_id: tenant_id, source_type: source_type, source_id: source_id)
   end
 
+  @doc "Active sources created after the given instant (digests, reports)."
+  def list_sources_since(tenant_id, %DateTime{} = since) do
+    Repo.all(
+      from source in Source,
+        where:
+          source.tenant_id == ^tenant_id and is_nil(source.deleted_at) and
+            source.inserted_at > ^since,
+        order_by: [desc: source.inserted_at]
+    )
+  end
+
   def list_sources(tenant_id) do
     Repo.all(
       from source in Source,

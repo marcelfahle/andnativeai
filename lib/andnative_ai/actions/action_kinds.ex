@@ -20,6 +20,20 @@ defmodule AndnativeAi.Actions.ActionKinds do
       label: "Deep research",
       ack:
         "On it — deep research takes a few minutes. I'll post the cited dossier in this thread."
+    },
+    "write" => %{
+      prefix: "write:",
+      handler: AndnativeAi.Actions.Handlers.Write,
+      requires_approval: true,
+      label: "Write draft",
+      ack: "On it — drafting with your enabled skills and cited company memory."
+    },
+    "weekly_digest" => %{
+      prefix: "digest:",
+      handler: AndnativeAi.Actions.Handlers.WeeklyDigest,
+      requires_approval: false,
+      label: "Weekly digest",
+      ack: "On it — compiling this week's governed memory digest."
     }
   }
 
