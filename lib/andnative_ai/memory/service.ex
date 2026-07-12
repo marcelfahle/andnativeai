@@ -70,7 +70,8 @@ defmodule AndnativeAi.Memory.Service do
         type: source.source_type,
         external_id: source.source_id,
         name: source.name,
-        url: source.permalink_or_url
+        url: source.permalink_or_url,
+        collection_id: source.collection_id
       }
     })
     |> Repo.all()
@@ -205,6 +206,9 @@ defmodule AndnativeAi.Memory.Service do
 
       {:source_id, source_id}, query ->
         where(query, [_item, source], source.id == ^source_id)
+
+      {:collection_id, collection_id}, query ->
+        where(query, [_item, source], source.collection_id == ^collection_id)
 
       {:channel_id, channel_id}, query ->
         where(query, [item, _source], item.channel_id == ^channel_id)

@@ -2,8 +2,93 @@ defmodule AndnativeAi.Memory do
   import Ecto.Query
 
   alias AndnativeAi.Repo
-  alias AndnativeAi.Memory.{Agent, Item, Source, Tenant}
+  alias AndnativeAi.Memory.{Agent, Collection, Item, Source, Tenant}
   alias AndnativeAi.Runtime.Audit
+
+  ## Collections
+
+  @doc """
+  Creates a collection and records the governance decision as audit
+  evidence. `opts[:actor]` names who confirmed the collection.
+  """
+  def create_collection(tenant_id, attrs, opts \\ []) do
+    result =
+      %Collection{tenant_id: tenant_id}
+      |> Collection.changeset(attrs)
+      |> Repo.insert()
+
+    with {:ok, collection} <- result do
+      record_audit_best_effort(%{
+        tenant_id: tenant_id,
+        event_kind: "collection_created",
+        component: "control_panel",
+        actor: Keyword.get(opts, :actor, "Admin"),
+        status: "confirmed",
+        summary: "Collection \"#{collection.name}\" (#{collection.kind}) was confirmed.",
+        metadata: %{collection_id: collection.id, kind: collection.kind},
+        occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+
+      {:ok, collection}
+    end
+  end
+
+  def list_collections(tenant_id) do
+    Repo.all(
+      from collection in Collection,
+        where: collection.tenant_id == ^tenant_id and is_nil(collection.deleted_at),
+        order_by: collection.name
+    )
+  end
+
+  def get_collection!(tenant_id, id) do
+    Repo.get_by!(Collection, id: id, tenant_id: tenant_id)
+  end
+
+  @doc """
+  Soft-deletes a collection and every source in it, so the whole corpus
+  leaves retrieval at once. Each source delete is audited by the existing
+  soft-delete path; the collection delete is audited as governance.
+  """
+  def soft_delete_collection(tenant_id, collection_id, opts \\ []) do
+    collection = get_collection!(tenant_id, collection_id)
+
+    source_ids =
+      Repo.all(
+        from source in Source,
+          where:
+            source.tenant_id == ^tenant_id and source.collection_id == ^collection_id and
+              is_nil(source.deleted_at),
+          select: source.id
+      )
+
+    # A failed source delete must stop the operation rather than leave a
+    # partially deleted corpus behind.
+    Enum.each(source_ids, fn source_id ->
+      {:ok, _result} = soft_delete_source(tenant_id, source_id)
+    end)
+
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    {:ok, collection} =
+      collection
+      |> Collection.changeset(%{deleted_at: now})
+      |> Repo.update()
+
+    record_audit_best_effort(%{
+      tenant_id: tenant_id,
+      event_kind: "collection_deleted",
+      component: "control_panel",
+      actor: Keyword.get(opts, :actor, "Admin"),
+      status: "deleted",
+      summary:
+        "Collection \"#{collection.name}\" and #{length(source_ids)} sources were removed from governed memory.",
+      metadata: %{collection_id: collection.id, deleted_sources_count: length(source_ids)},
+      occurred_at: now
+    })
+
+    {:ok, %{collection: collection, deleted_sources_count: length(source_ids)}}
+  end
 
   def list_tenants do
     Repo.all(from tenant in Tenant, order_by: tenant.name)

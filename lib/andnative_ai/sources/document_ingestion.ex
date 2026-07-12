@@ -1,11 +1,15 @@
 defmodule AndnativeAi.Sources.DocumentIngestion do
   alias AndnativeAi.Memory
+  alias AndnativeAi.Memory.Collection
   alias AndnativeAi.Memory.Service
 
   @allowed_extensions ~w(.md .txt)
   @max_chunk_chars 1_600
+  @preview_chars 500
 
-  def ingest_upload(tenant_id, %{path: path, filename: filename}) do
+  def ingest_upload(tenant_id, %{path: path, filename: filename}, opts \\ []) do
+    collection = Keyword.get(opts, :collection)
+
     with :ok <- validate_extension(filename),
          {:ok, stored} <- store_file(tenant_id, path, filename),
          {:ok, text} <- File.read(stored.path),
@@ -17,11 +21,12 @@ defmodule AndnativeAi.Sources.DocumentIngestion do
                source_type: "document",
                source_id: stored.id,
                name: filename,
-               permalink_or_url: stored.url
+               permalink_or_url: stored.url,
+               collection_id: collection && collection.id
              },
              Enum.map(chunks, fn chunk ->
                %{
-                 text: chunk,
+                 text: Collection.context_prefix(collection, filename) <> chunk,
                  provenance: %{
                    "filename" => filename,
                    "stored_path" => stored.path,
@@ -37,6 +42,113 @@ defmodule AndnativeAi.Sources.DocumentIngestion do
     else
       [] -> {:error, :empty_document}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  ## Staged multi-file uploads (collections)
+
+  @doc """
+  Copies an uploaded file into a staging directory, expanding `.zip`
+  archives. Returns `{:ok, [%{path, filename, preview}]}` for the usable
+  documents found. Staged files live outside governed memory until
+  `ingest_staged/3` confirms them.
+  """
+  def stage_upload(staging_dir, %{path: path, filename: filename}) do
+    File.mkdir_p!(staging_dir)
+
+    if Path.extname(filename) == ".zip" do
+      expand_zip(staging_dir, path)
+    else
+      with :ok <- validate_extension(filename) do
+        destination = Path.join(staging_dir, sanitize_filename(filename))
+
+        with {:ok, _bytes} <- File.copy(path, destination) do
+          {:ok, [staged_entry(destination, filename)]}
+        end
+      end
+    end
+  end
+
+  @doc """
+  Ingests every staged file into the given collection. Callers clean the
+  staging directory up afterwards with `discard_staged/1`.
+  """
+  def ingest_staged(tenant_id, staged_files, collection) do
+    results =
+      Enum.map(staged_files, fn staged ->
+        {staged.filename,
+         ingest_upload(tenant_id, %{path: staged.path, filename: staged.filename},
+           collection: collection
+         )}
+      end)
+
+    {succeeded, failed} =
+      Enum.split_with(results, fn {_filename, result} -> match?({:ok, _}, result) end)
+
+    %{succeeded: length(succeeded), failed: Enum.map(failed, fn {name, _} -> name end)}
+  end
+
+  def discard_staged(staging_dir), do: File.rm_rf(staging_dir)
+
+  # Zip entries are validated by name BEFORE extraction (zip-slip defense):
+  # only relative paths without traversal or hidden segments and with an
+  # allowed extension are extracted, via the :file_list allow-list.
+  defp expand_zip(staging_dir, zip_path) do
+    extract_dir = Path.join(staging_dir, "zip-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(extract_dir)
+    zip_charlist = String.to_charlist(zip_path)
+
+    with {:ok, entries} <- :zip.list_dir(zip_charlist),
+         safe_names when safe_names != [] <- safe_entry_names(entries),
+         {:ok, _extracted} <-
+           :zip.unzip(zip_charlist,
+             cwd: String.to_charlist(extract_dir),
+             file_list: Enum.map(safe_names, &String.to_charlist/1)
+           ) do
+      staged =
+        safe_names
+        |> Enum.map(&Path.join(extract_dir, &1))
+        |> Enum.filter(&File.regular?/1)
+        |> Enum.map(&staged_entry(&1, Path.basename(&1)))
+
+      if staged == [], do: {:error, :empty_archive}, else: {:ok, staged}
+    else
+      [] -> {:error, :empty_archive}
+      {:error, reason} -> {:error, {:invalid_zip, reason}}
+    end
+  end
+
+  defp safe_entry_names(entries) do
+    entries
+    |> Enum.flat_map(fn
+      {:zip_file, name, _info, _comment, _offset, _size} -> [to_string(name)]
+      _other -> []
+    end)
+    |> Enum.filter(&safe_zip_name?/1)
+  end
+
+  defp safe_zip_name?(name) do
+    segments = Path.split(name)
+
+    Path.type(name) == :relative and
+      Path.extname(name) in @allowed_extensions and
+      Enum.all?(segments, fn segment ->
+        segment != ".." and not String.starts_with?(segment, ".")
+      end)
+  end
+
+  defp staged_entry(path, filename) do
+    %{path: path, filename: filename, preview: preview(path)}
+  end
+
+  # Preview only reads the leading bytes and never crashes on invalid UTF-8.
+  defp preview(path) do
+    case File.open(path, [:read, :binary], &IO.binread(&1, @preview_chars * 4)) do
+      {:ok, data} when is_binary(data) ->
+        if String.valid?(data), do: String.slice(data, 0, @preview_chars), else: ""
+
+      _unreadable ->
+        ""
     end
   end
 

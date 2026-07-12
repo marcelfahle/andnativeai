@@ -14,6 +14,7 @@ defmodule AndnativeAi.Memory.Source do
     field :deleted_at, :utc_datetime
 
     belongs_to :tenant, AndnativeAi.Memory.Tenant
+    belongs_to :collection, AndnativeAi.Memory.Collection
     has_many :items, AndnativeAi.Memory.Item, foreign_key: :source_id
 
     timestamps(type: :utc_datetime)
@@ -28,6 +29,7 @@ defmodule AndnativeAi.Memory.Source do
       :permalink_or_url,
       :status,
       :settings,
+      :collection_id,
       :last_ingested_at,
       :deleted_at
     ])

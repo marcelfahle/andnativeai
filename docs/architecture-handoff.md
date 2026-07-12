@@ -84,6 +84,30 @@ Behavior:
 - Creates one `memory_sources` row and one or more `memory_items`.
 - Delete in Sources soft-deletes the source and all active items.
 
+### Collections
+
+Path:
+`AndnativeAiWeb.Admin.DocumentsLive` (New collection) ->
+`AndnativeAi.Sources.DocumentIngestion.stage_upload/2` ->
+`AndnativeAi.Sources.CollectionClassifier.propose/2` ->
+`AndnativeAi.Memory.create_collection/3` ->
+`DocumentIngestion.ingest_staged/3`
+
+Behavior:
+
+- Multi-file upload (.md/.txt, or a folder as .zip) auto-stages each file as
+  it finishes transferring; nothing enters memory while staged.
+- A classifier proposes collection name/kind/description (OpenAI when
+  `OPENAI_API_KEY` is set, filename heuristics otherwise); the admin confirms
+  or edits — the confirmation is a `collection_created` governance audit
+  event.
+- Each ingested chunk gets the collection context prefix
+  `[{collection.name} · {source.name}]` so retrieval knows what the chunk is;
+  search accepts `scope.collection_id`; the memory map groups sources by
+  collection.
+- Deleting a collection soft-deletes all member sources (audited as
+  `collection_deleted` plus per-source events).
+
 ### Slack Ingestion
 
 Path:
