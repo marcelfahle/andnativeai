@@ -78,10 +78,10 @@ defmodule AndnativeAi.Actions.Worker do
       {:ok, bot_token, _bot_user_id} ->
         client = slack_client()
 
+        # Sources stay on the governance audit trail; the Slack message is
+        # for the person, not the auditor.
         message =
-          AndnativeAi.Slack.Mrkdwn.from_markdown(
-            "*#{result.title}* is ready. #{result.summary}" <> citation_suffix(result)
-          )
+          AndnativeAi.Slack.Mrkdwn.from_markdown("*#{result.title}* is ready. #{result.summary}")
 
         client.post_message(bot_token, action.slack_channel_id, message, action.slack_thread_ts)
 
@@ -115,12 +115,6 @@ defmodule AndnativeAi.Actions.Worker do
       _unavailable -> :ok
     end
   end
-
-  defp citation_suffix(%{citations: citations}) when is_list(citations) and citations != [] do
-    " Sources: " <> (citations |> Enum.take(5) |> Enum.join(", "))
-  end
-
-  defp citation_suffix(_result), do: ""
 
   defp slack_client do
     Application.get_env(:andnative_ai, :slack_client, Client)

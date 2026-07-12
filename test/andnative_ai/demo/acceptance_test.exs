@@ -81,7 +81,9 @@ defmodule AndnativeAi.Demo.AcceptanceTest do
              })
 
     assert response.answer =~ "Ada"
-    assert response.answer =~ "example.slack.com"
+    # Sources never appear in the Slack answer; provenance lives on the
+    # citations list and the audit trail.
+    refute response.answer =~ "example.slack.com"
     assert Enum.any?(response.citations, &String.contains?(&1, "example.slack.com"))
 
     # Governed forgetting, step 1: while the handbook exists, the agent
