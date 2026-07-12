@@ -258,7 +258,7 @@ defmodule AndnativeAi.Sources.DocumentIngestion do
     |> String.replace(~r/[^A-Za-z0-9._-]/, "-")
   end
 
-  defp raw_sources_path do
+  def raw_sources_path do
     Application.get_env(:andnative_ai, :raw_sources_path) ||
       System.get_env("RAW_SOURCES_PATH") ||
       "var/sources"

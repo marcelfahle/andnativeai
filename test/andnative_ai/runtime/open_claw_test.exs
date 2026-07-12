@@ -244,8 +244,10 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
     assert response.answer =~ "Refund approvals"
     assert_received {:posted_slack_message, "CMENTION", posted_text, "1710000200.000100"}
     assert posted_text =~ "Refund approvals"
-    refute posted_text =~ "Source"
-    refute posted_text =~ "https://"
+    # The responder appends a compact link-only footer from citation
+    # plumbing; the answer body itself stays clean of URLs.
+    assert posted_text =~ "Sources:"
+    assert posted_text =~ "<https://docs.example.com/refunds|"
 
     events = runtime_events(tenant.id, response.request_id)
 

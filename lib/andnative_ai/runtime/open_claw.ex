@@ -51,6 +51,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
            question: question,
            answer: response.answer,
            citations: response.citations,
+           source_refs: source_refs(results),
            searched_memory?: true
          }}
 
@@ -159,6 +160,15 @@ defmodule AndnativeAi.Runtime.OpenClaw do
     agent
     |> identity_prefix()
     |> prefix_answer("#{agent.name}: #{top.text}")
+  end
+
+  # Name+URL pairs for the compact Sources footer the responder appends.
+  # URLs come from citation plumbing, never from the model.
+  defp source_refs(results) do
+    results
+    |> Enum.map(&%{name: &1.source.name, url: &1.citation_url})
+    |> Enum.reject(&is_nil(&1.url))
+    |> Enum.uniq_by(& &1.url)
   end
 
   defp citations(results) do

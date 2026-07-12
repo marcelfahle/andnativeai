@@ -68,7 +68,7 @@ defmodule AndnativeAi.Memory.CollectionsTest do
     assert second.id != first.id
   end
 
-  test "document citations are computed from the memory map even for stale file:// rows" do
+  test "document citations are computed for the source reader even for stale file:// rows" do
     tenant = tenant_fixture("collections-stale-citation")
 
     {:ok, _} =
@@ -92,7 +92,7 @@ defmodule AndnativeAi.Memory.CollectionsTest do
       )
 
     [result] = Service.search(tenant.id, "six week cycles", %{limit: 1})
-    assert result.citation_url =~ "/admin/memory#memory-source-#{result.source.id}"
+    assert result.citation_url =~ "/sources/#{result.source.id}"
     refute result.citation_url =~ "file://"
   end
 
