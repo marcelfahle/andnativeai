@@ -19,21 +19,25 @@ defmodule AndnativeAiWeb.Admin.MemoryMapLive do
 
   @impl true
   def handle_event("toggle-source", %{"id" => id}, socket) do
-    source_id = String.to_integer(id)
+    case Integer.parse(to_string(id)) do
+      {source_id, ""} ->
+        if socket.assigns.expanded_source_id == source_id do
+          {:noreply,
+           socket
+           |> assign(:expanded_source_id, nil)
+           |> assign(:expanded_items, [])}
+        else
+          items =
+            Memory.list_all_source_memory_items(socket.assigns.tenant.id, source_id)
 
-    if socket.assigns.expanded_source_id == source_id do
-      {:noreply,
-       socket
-       |> assign(:expanded_source_id, nil)
-       |> assign(:expanded_items, [])}
-    else
-      items =
-        Memory.list_all_source_memory_items(socket.assigns.tenant.id, source_id)
+          {:noreply,
+           socket
+           |> assign(:expanded_source_id, source_id)
+           |> assign(:expanded_items, items)}
+        end
 
-      {:noreply,
-       socket
-       |> assign(:expanded_source_id, source_id)
-       |> assign(:expanded_items, items)}
+      _invalid ->
+        {:noreply, socket}
     end
   end
 
@@ -198,6 +202,8 @@ defmodule AndnativeAiWeb.Admin.MemoryMapLive do
                   type="button"
                   phx-click="toggle-source"
                   phx-value-id={source.id}
+                  aria-expanded={to_string(@expanded_source_id == source.id)}
+                  aria-controls={"memory-source-items-#{source.id}"}
                   class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-base-200/60"
                 >
                   <span class="min-w-0">
@@ -321,10 +327,8 @@ defmodule AndnativeAiWeb.Admin.MemoryMapLive do
     """
   end
 
-  defp truncate(text, max) when byte_size(text) <= max, do: text
-
   defp truncate(text, max) do
-    String.slice(text, 0, max) <> "…"
+    if String.length(text) <= max, do: text, else: String.slice(text, 0, max) <> "…"
   end
 
   defp web_url(item) do
