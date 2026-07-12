@@ -3,7 +3,9 @@ defmodule AndnativeAiWeb.Admin.AgentsLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias AndnativeAi.Accounts
   alias AndnativeAi.Memory
+  alias AndnativeAi.Runtime.Audit
 
   setup :register_and_log_in_user
 
@@ -38,7 +40,7 @@ defmodule AndnativeAiWeb.Admin.AgentsLiveTest do
       agent: %{
         name: "Demo Agent",
         identity: "Answer from governed memory.",
-        model: "gpt-4.1-mini",
+        role: "marketing",
         status: "active"
       }
     )
@@ -54,8 +56,76 @@ defmodule AndnativeAiWeb.Admin.AgentsLiveTest do
     |> render_click()
 
     synced_agent = Memory.get_agent!(tenant.id, agent.id)
+    assert synced_agent.role == "marketing"
     assert synced_agent.runtime_ref
     assert File.exists?(synced_agent.runtime_ref)
+  end
+
+  test "ordinary admins see roles but never models or the policy panel", %{conn: conn} do
+    tenant = Memory.ensure_demo_tenant!()
+
+    {:ok, agent} =
+      Memory.create_agent(tenant.id, %{
+        "name" => "Bran",
+        "identity" => "Marketing copilot.",
+        "role" => "marketing",
+        "status" => "active"
+      })
+
+    {:ok, _agent} =
+      Memory.update_agent_model_policy(agent, %{"model" => "gpt-5.6-terra"})
+
+    {:ok, view, html} = live(conn, ~p"/admin/agents")
+
+    assert html =~ "Marketing"
+    refute html =~ "gpt-5.6-terra"
+    refute has_element?(view, "#agent-model-#{agent.id}")
+    refute has_element?(view, "#policy-agent-#{agent.id}")
+    refute has_element?(view, "select#agent_model")
+  end
+
+  test "superadmins see effective models and set audited policy", %{conn: conn, user: user} do
+    {:ok, _superadmin} = Accounts.set_user_role(user, "superadmin")
+    tenant = Memory.ensure_demo_tenant!()
+
+    {:ok, agent} =
+      Memory.create_agent(tenant.id, %{
+        "name" => "Bran",
+        "identity" => "Marketing copilot.",
+        "role" => "marketing",
+        "status" => "active"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/admin/agents")
+
+    assert has_element?(view, "#agent-model-#{agent.id}")
+
+    view
+    |> element("#policy-agent-#{agent.id}")
+    |> render_click()
+
+    assert has_element?(view, "#model-policy-panel")
+
+    view
+    |> form("#model-policy-form",
+      policy: %{
+        model: "gpt-5.6-terra",
+        write: "claude-opus-4-8",
+        chat: "",
+        classify: "",
+        situate: ""
+      }
+    )
+    |> render_submit()
+
+    updated = Memory.get_agent!(tenant.id, agent.id)
+    assert updated.model == "gpt-5.6-terra"
+    assert updated.model_policy == %{"write" => "claude-opus-4-8"}
+
+    assert Enum.any?(
+             Audit.list_recent_events(tenant.id, limit: 10),
+             &(&1.event_kind == "model_policy_changed" and &1.actor == user.email)
+           )
   end
 
   test "admin navigation exposes sources, Slack, and runtime pages", %{conn: conn} do

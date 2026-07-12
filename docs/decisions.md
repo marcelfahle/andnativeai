@@ -323,3 +323,23 @@ Why:
   `OPENCLAW_GATEWAY_URL` env) is preserved in code, so a future split is
   additive — reintroduce a service, point the URL at it.
 - One fewer build target keeps `docker compose up` and CI honest and fast.
+
+## DEC-020: Agents Are Roles; Models Are Platform Policy
+
+Customers configure agents by role (general, marketing, ops, research),
+name, identity, and skills. Which model serves a capability is a platform
+decision: superadmins set a base model plus per-capability overrides
+(chat, write, classify, situate) on `agents.model_policy`, resolved by
+`Runtime.ModelPolicy` (override → base model → appliance default). Every
+policy change is a `model_policy_changed` governance audit event with
+before/after and the actor.
+
+Why:
+
+- SME buyers should reason about "our marketing agent", not model IDs;
+  model churn (e.g. moving copywriting to Claude Opus) must be invisible
+  to them except as better output.
+- Per-capability overrides let one agent use an expensive model only
+  where it earns its cost (write) and a cheap one elsewhere (classify).
+- Gating the policy to superadmins (AAI-19 role) keeps the audit story
+  honest: model changes are attributable platform operations.

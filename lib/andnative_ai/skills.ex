@@ -175,6 +175,19 @@ defmodule AndnativeAi.Skills do
     )
   end
 
+  @doc "Enabled skills for many agents in one query, as agent_id => [skill]."
+  def enabled_skills_by_agent(agent_ids) when is_list(agent_ids) do
+    Repo.all(
+      from skill in Skill,
+        join: join in "agent_skills",
+        on: join.skill_id == skill.id,
+        where: join.agent_id in ^agent_ids,
+        order_by: skill.name,
+        select: {join.agent_id, skill}
+    )
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+
   def enabled_skill_ids(agent_id) do
     Repo.all(
       from join in "agent_skills", where: join.agent_id == ^agent_id, select: join.skill_id

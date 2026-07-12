@@ -3,7 +3,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
 
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Agent
-  alias AndnativeAi.Runtime.{Audit, MemoryTool, OpenAIClient}
+  alias AndnativeAi.Runtime.{Audit, MemoryTool, ModelPolicy, OpenAIClient}
   alias AndnativeAi.Skills
 
   @impl true
@@ -82,7 +82,8 @@ defmodule AndnativeAi.Runtime.OpenClaw do
       id: "andnative-agent-#{agent.id}",
       name: agent.name,
       identity: agent.identity,
-      model: agent.model,
+      role: agent.role,
+      model: ModelPolicy.resolve(agent, :chat),
       runtime: "openclaw",
       mcp_servers: %{
         andnative_memory: %{
@@ -167,9 +168,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
     |> Enum.uniq()
   end
 
-  defp model(agent) do
-    agent.model || System.get_env("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
-  end
+  defp model(agent), do: ModelPolicy.resolve(agent, :chat)
 
   defp model_instructions(agent) do
     """
