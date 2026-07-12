@@ -187,6 +187,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
 
     Answer Slack questions only from governed memory in the provided context.
     If the memory context is empty or does not answer the question, say that you could not find a relevant source.
+    If asked what you can do or which skills you have, list your installed skills by name and description; this does not require memory.
     Keep answers concise and include the provided citation URLs when using memory.
     """
   end
@@ -194,7 +195,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
   # Progressive disclosure per the Agent Skills spec: enabled skills
   # contribute only name+description; a skill's body loads when the request
   # names it.
-  defp skills_instructions(%{enabled: []}), do: ""
+  defp skills_instructions(%{enabled: []}), do: "\n\nInstalled skills: none."
 
   defp skills_instructions(%{enabled: enabled, selected: selected}) do
     metadata = """

@@ -44,6 +44,58 @@ defmodule AndnativeAi.Memory.CollectionsTest do
            )
   end
 
+  test "a deleted collection's name can be reused, and live conflicts land on :name" do
+    tenant = tenant_fixture("collections-reuse")
+
+    attrs = %{
+      "name" => "37signals company handbook",
+      "kind" => "handbook",
+      "description" => "The 37signals handbook corpus for the demo."
+    }
+
+    {:ok, first} = Memory.create_collection(tenant.id, attrs)
+
+    # While the first one is alive, the same name must conflict — visibly,
+    # on the field the admin edits.
+    assert {:error, changeset} = Memory.create_collection(tenant.id, attrs)
+    assert %{name: ["is already used by another collection"]} = errors_on(changeset)
+
+    {:ok, _} = Memory.soft_delete_collection(tenant.id, first.id)
+
+    # After deletion the name is free again (delete → re-ingest demo flow).
+    assert {:ok, second} = Memory.create_collection(tenant.id, attrs)
+    assert second.slug == first.slug
+    assert second.id != first.id
+  end
+
+  test "document citations are computed from the memory map even for stale file:// rows" do
+    tenant = tenant_fixture("collections-stale-citation")
+
+    {:ok, _} =
+      Service.ingest(
+        tenant.id,
+        %{
+          source_type: "document",
+          source_id: "stale-1",
+          name: "handbook.md",
+          permalink_or_url: "file:///app/var/sources/1/handbook.md"
+        },
+        [
+          %{
+            text: "We work in six week cycles with cooldown in between.",
+            provenance: %{"permalink" => "file:///app/var/sources/1/handbook.md"}
+          }
+        ],
+        %{},
+        "tenant",
+        "default"
+      )
+
+    [result] = Service.search(tenant.id, "six week cycles", %{limit: 1})
+    assert result.citation_url =~ "/admin/memory#memory-source-#{result.source.id}"
+    refute result.citation_url =~ "file://"
+  end
+
   test "collection context is embedded into chunks and scopes search" do
     tenant = tenant_fixture("collections-context")
 
