@@ -59,6 +59,7 @@ services:
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in /opt/andnativeai/.env}
       SERVICE_ROLE: slack-listener
       SLACK_SOCKET_MODE: "true"
+      PHX_HOST: andnativeai.marcelfahle.net
       MINIO_ENDPOINT: http://minio:9000
       REDIS_URL: redis://redis:6379/0
       RAW_SOURCES_PATH: /app/var/sources

@@ -102,15 +102,15 @@ defmodule AndnativeAi.Runtime.OpenClaw do
     citations = citations(results)
 
     {answer, status, fallback_reason, runtime_error_reason} =
-      case model_response(agent, question, results, citations, skills) do
+      case model_response(agent, question, results, skills) do
         {:ok, text} ->
-          {ensure_citations(text, citations), "model", nil, nil}
+          {text, "model", nil, nil}
 
         {:error, {:model_error, reason}} ->
-          {deterministic_response(agent, results, citations), "fallback", reason, reason}
+          {deterministic_response(agent, results), "fallback", reason, reason}
 
         {:error, reason} ->
-          {deterministic_response(agent, results, citations), "fallback", reason, nil}
+          {deterministic_response(agent, results), "fallback", reason, nil}
       end
 
     %{
@@ -122,7 +122,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
     }
   end
 
-  defp model_response(agent, question, results, citations, skills) do
+  defp model_response(agent, question, results, skills) do
     api_key = System.get_env("OPENAI_API_KEY", "")
 
     cond do
@@ -137,7 +137,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
           api_key: api_key,
           model: model(agent),
           instructions: model_instructions(agent) <> skills_instructions(skills),
-          input: model_input(question, results, citations),
+          input: model_input(question, results),
           max_output_tokens: 240
         }
 
@@ -148,23 +148,16 @@ defmodule AndnativeAi.Runtime.OpenClaw do
     end
   end
 
-  defp deterministic_response(agent, [], _citations) do
+  defp deterministic_response(agent, []) do
     agent
     |> identity_prefix()
     |> prefix_answer("I searched memory but could not find a relevant source.")
   end
 
-  defp deterministic_response(agent, [top | _], citations) do
-    citation_text =
-      citations
-      |> Enum.take(2)
-      |> Enum.join(" ")
-
-    answer = "#{agent.name}: #{top.text}\n\nSource: #{citation_text}"
-
+  defp deterministic_response(agent, [top | _]) do
     agent
     |> identity_prefix()
-    |> prefix_answer(answer)
+    |> prefix_answer("#{agent.name}: #{top.text}")
   end
 
   defp citations(results) do
@@ -188,7 +181,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
     Answer Slack questions only from governed memory in the provided context.
     If the memory context is empty or does not answer the question, say that you could not find a relevant source.
     If asked what you can do or which skills you have, list your installed skills by name and description; this does not require memory.
-    Keep answers concise and include the provided citation URLs when using memory.
+    Keep answers concise. Never include source URLs or a sources line in the answer; provenance is recorded separately in the governance audit trail.
     """
   end
 
@@ -221,44 +214,32 @@ defmodule AndnativeAi.Runtime.OpenClaw do
 
   defp skills_instructions(_skills), do: ""
 
-  defp model_input(question, results, citations) do
+  defp model_input(question, results) do
     """
     Question:
     #{question}
 
     Governed memory:
-    #{memory_context(results, citations)}
+    #{memory_context(results)}
 
     Return one Slack-ready answer.
     """
   end
 
-  defp memory_context([], _citations), do: "(empty)"
+  defp memory_context([]), do: "(empty)"
 
-  defp memory_context(results, citations) do
+  # Citations are recorded on the audit trail, not handed to the model —
+  # Slack answers stay clean of source URLs.
+  defp memory_context(results) do
     results
     |> Enum.with_index(1)
     |> Enum.map(fn {result, index} ->
-      citation = Enum.at(citations, index - 1) || result.citation_url || ""
-
       """
       [#{index}]
       #{result.text}
-      Citation: #{citation}
       """
     end)
     |> Enum.join("\n")
-  end
-
-  defp ensure_citations(answer, []), do: answer
-
-  defp ensure_citations(answer, citations) do
-    if Enum.any?(citations, &String.contains?(answer, &1)) do
-      answer
-    else
-      source_text = citations |> Enum.take(2) |> Enum.join(" ")
-      answer <> "\n\nSource: " <> source_text
-    end
   end
 
   defp identity_prefix(%Agent{identity: identity}) when is_binary(identity) do

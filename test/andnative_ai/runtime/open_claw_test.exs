@@ -241,7 +241,8 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
                bot_token: "xoxb-test"
              )
 
-    assert response.answer =~ "Source:"
+    refute response.answer =~ "Source:"
+    assert response.answer =~ "Refund approvals"
     assert_received {:posted_slack_message, "CMENTION", posted_text, "1710000200.000100"}
     assert posted_text =~ "Refund approvals"
 
@@ -282,7 +283,8 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
                bot_token: "xoxb-test"
              )
 
-    assert response.answer =~ "Source:"
+    refute response.answer =~ "Source:"
+    assert response.answer =~ "Refund approvals"
 
     assert Enum.any?(
              runtime_events(tenant.id, response.request_id),
@@ -334,7 +336,8 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
                client: FakeSlackClient
              )
 
-    assert response.answer =~ "Source:"
+    refute response.answer =~ "Source:"
+    assert response.answer =~ "Refund approvals"
 
     assert Enum.any?(
              runtime_events(tenant.id, response.request_id),
