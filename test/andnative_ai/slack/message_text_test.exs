@@ -150,6 +150,22 @@ defmodule AndnativeAi.Slack.MessageTextTest do
       message = %{"type" => "message", "user" => "U1", "text" => "we decided to ship"}
       assert MessageText.normalize(message) == message
     end
+
+    test "a Linear-looking message without content normalizes to empty text" do
+      message = %{
+        "type" => "message",
+        "subtype" => "bot_message",
+        "bot_id" => "BLINEAR",
+        "bot_profile" => %{"name" => "Linear"},
+        "ts" => "1710000000.000300",
+        "text" => ""
+      }
+
+      normalized = MessageText.normalize(message)
+
+      assert normalized["app_message"] == true
+      assert normalized["text"] == ""
+    end
   end
 
   describe "linear_message?/1" do

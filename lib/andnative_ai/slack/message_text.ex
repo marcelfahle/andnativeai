@@ -61,7 +61,7 @@ defmodule AndnativeAi.Slack.MessageText do
       text = extract(message)
 
       message
-      |> Map.put("text", linear_prefix(message) <> text)
+      |> Map.put("text", linear_prefix(message, text) <> text)
       |> Map.put("app_message", true)
       |> put_linear_url(text)
     else
@@ -75,11 +75,14 @@ defmodule AndnativeAi.Slack.MessageText do
   Returns true when the message looks like a Linear issue notification.
   """
   def linear_message?(message) when is_map(message) do
-    app_message?(message) and
-      (linear_bot_profile?(message) or Regex.match?(@linear_url, extract(message)))
+    app_message?(message) and linear_content?(message, extract(message))
   end
 
   def linear_message?(_message), do: false
+
+  defp linear_content?(message, text) do
+    linear_bot_profile?(message) or Regex.match?(@linear_url, text)
+  end
 
   defp linear_bot_profile?(message) do
     name =
@@ -90,8 +93,12 @@ defmodule AndnativeAi.Slack.MessageText do
     name |> to_string() |> String.downcase() |> String.contains?("linear")
   end
 
-  defp linear_prefix(message) do
-    if linear_message?(message), do: "Linear update: ", else: ""
+  # An empty extraction stays empty so the distiller drops it as noise; a
+  # bare "Linear update: " label is not memory.
+  defp linear_prefix(_message, ""), do: ""
+
+  defp linear_prefix(message, text) do
+    if linear_content?(message, text), do: "Linear update: ", else: ""
   end
 
   defp put_linear_url(message, text) do

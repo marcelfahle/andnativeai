@@ -260,6 +260,39 @@ defmodule AndnativeAi.Slack.IngestionTest do
       assert result.citation_url =~ "example.slack.com"
     end
 
+    test "empty app messages are not ingested even when the policy is on" do
+      tenant = tenant_fixture("slack-app-empty")
+
+      {:ok, _} =
+        Ingestion.handle_event(
+          tenant.id,
+          %{"type" => "member_joined_channel", "user" => "UBOT", "channel" => "CJOIN"},
+          @opts
+        )
+
+      source = Memory.get_source_by_external_id(tenant.id, "slack_channel", "CJOIN")
+
+      {:ok, _source} =
+        Memory.update_source_settings(tenant.id, source.id, %{"ingest_bot_messages" => true})
+
+      empty_event = %{
+        "type" => "message",
+        "subtype" => "bot_message",
+        "channel" => "CJOIN",
+        "bot_id" => "BLINEAR",
+        "bot_profile" => %{"name" => "Linear", "user_id" => "ULINEAR"},
+        "ts" => "1710000012.000100",
+        "text" => ""
+      }
+
+      assert {:ok, %{items: []}} = Ingestion.handle_event(tenant.id, empty_event, @opts)
+
+      refute Enum.any?(
+               Service.search(tenant.id, "Linear update", %{limit: 5}),
+               &String.contains?(&1.text, "Linear update")
+             )
+    end
+
     test "our own bot posts stay excluded even when app ingestion is on" do
       tenant = tenant_fixture("slack-app-self")
 
