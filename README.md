@@ -73,6 +73,7 @@ See `docs/slack-app.md` for the Socket Mode app setup.
 ## Demo
 
 - `docs/demo-checklist.md` has the repeatable end-to-end script.
+- `docs/demo-script.md` is the camera-ready scene-by-scene recording script.
 - `docs/slack-smoke-test.md` has the short local Slack smoke test.
 - `docs/slack-oauth-testing.md` explains how to test Slack OAuth onboarding.
 - `docs/agent-setup.md` explains the current agent setup and multiple-agent
