@@ -73,6 +73,31 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
+  cloak_key =
+    System.get_env("CLOAK_KEY") ||
+      raise """
+      environment variable CLOAK_KEY is missing.
+      Secrets at rest (Slack tokens) are encrypted with it.
+      Generate one with: openssl rand -base64 32
+      """
+
+  decoded_cloak_key =
+    case Base.decode64(cloak_key) do
+      {:ok, key} when byte_size(key) == 32 ->
+        key
+
+      _invalid ->
+        raise """
+        CLOAK_KEY must be 32 bytes, base64-encoded.
+        Generate one with: openssl rand -base64 32
+        """
+    end
+
+  config :andnative_ai, AndnativeAi.Vault,
+    ciphers: [
+      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: decoded_cloak_key}
+    ]
+
   host = System.get_env("PHX_HOST") || "example.com"
   port = String.to_integer(System.get_env("PORT") || "4000")
 

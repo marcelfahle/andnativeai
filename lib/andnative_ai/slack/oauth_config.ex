@@ -5,7 +5,7 @@ defmodule AndnativeAi.Slack.OAuthConfig do
 
   schema "slack_oauth_configs" do
     field :client_id, :string
-    field :client_secret, :string
+    field :client_secret, AndnativeAi.Encrypted.Binary, redact: true
     field :redirect_uri, :string
     field :bot_scopes, :string
 

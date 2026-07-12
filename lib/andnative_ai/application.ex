@@ -10,6 +10,7 @@ defmodule AndnativeAi.Application do
     children =
       [
         AndnativeAiWeb.Telemetry,
+        AndnativeAi.Vault,
         AndnativeAi.Repo,
         {DNSCluster, query: Application.get_env(:andnative_ai, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: AndnativeAi.PubSub},

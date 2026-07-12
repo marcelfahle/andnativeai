@@ -82,3 +82,11 @@ config :phoenix_live_view,
   debug_attributes: true,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
+
+# Fixed dev-only encryption key for secrets at rest; prod requires CLOAK_KEY.
+config :andnative_ai, AndnativeAi.Vault,
+  ciphers: [
+    default:
+      {Cloak.Ciphers.AES.GCM,
+       tag: "AES.GCM.V1", key: Base.decode64!("2vAT/GJmXB2SexbBBpvVYJ2H1v5vqs0hZpIG4HXt9fs=")}
+  ]
