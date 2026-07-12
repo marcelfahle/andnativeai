@@ -94,6 +94,9 @@ defmodule AndnativeAi.Demo.AcceptanceTest do
                "text" => reimbursement_question
              })
 
+    # Assert the handbook's distinctive fact, not just words from the
+    # question, so this proves grounded retrieval rather than echoing.
+    assert known_response.answer =~ "above 500"
     assert known_response.answer =~ "manager approval"
     refute known_response.answer =~ "could not find"
     assert Enum.any?(known_response.citations, &String.contains?(&1, "handbook.md"))
