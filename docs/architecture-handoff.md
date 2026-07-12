@@ -183,6 +183,28 @@ Behavior:
   inspector shows the full mention -> approval -> execution -> delivery
   trace. Timeline chips gain an Actions category.
 
+### Skills
+
+Path:
+`AndnativeAiWeb.Admin.SkillsLive` ->
+`AndnativeAi.Skills.install_from_upload/4` ->
+`AndnativeAi.Skills.Parser` ->
+`AndnativeAi.Runtime.OpenClaw` (prompt integration)
+
+Behavior:
+
+- Prompt-pack skills only (Agent Skills standard): SKILL.md frontmatter is
+  validated (name/description constraints); bundles with `scripts/`,
+  `allowed-tools`, or dynamic `` !`command` `` injection are rejected and the
+  rejection is audited (`skill_rejected`).
+- Skills are version-pinned by content hash; install/enable/disable/remove
+  are governance audit events.
+- Progressive disclosure: enabled skills add name+description to the agent
+  instructions; when a request names a skill, its body is included and
+  `skill_used` (with version) lands on the request trace.
+- Admin page at `/admin/skills`: install from .zip or SKILL.md, per-agent
+  toggles, remove.
+
 ### Memory Search
 
 Path:

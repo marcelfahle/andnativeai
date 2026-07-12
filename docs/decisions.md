@@ -253,3 +253,28 @@ Why:
 
 Caveat: deliverables are posted as `.md` file uploads (external upload
 flow); Slack renders those as plain text. Canvas rendering is a follow-up.
+
+## DEC-017: Skills Are Governed Prompt-Packs (Phase 1)
+
+The appliance supports the open Agent Skills standard (SKILL.md,
+agentskills.io) restricted to prompt-pack skills: bundles containing
+executable scripts, `allowed-tools` grants, or dynamic shell-injection
+syntax are rejected at install (and the rejection is audited). Skills are
+installed per tenant, version-pinned by content hash, enabled per agent,
+and follow the spec's progressive disclosure: enabled skills contribute
+only name+description to the agent prompt; a skill's body loads when a
+request names it, which records a `skill_used` event with the version on
+the request trace.
+
+Why:
+
+- The standard is cross-vendor (~32 runtimes) and prompt-only skills need
+  nothing but file reads — a perfect fit for this runtime.
+- The documented malicious-skill class (Snyk ToxicSkills, Datadog) lives
+  almost entirely in script execution and dynamic injection; rejecting
+  those wholesale keeps most of the ecosystem usable at near-zero risk.
+- Showing which skill+version shaped an output is governance no other
+  runtime offers today.
+
+Phase 2 (scripted skills in a sandboxed executor) is deliberately out of
+scope until a real need exists.
