@@ -50,7 +50,7 @@ defmodule AndnativeAi.Sources.DocumentIngestionTest do
     [result | _] = Service.search(tenant.id, "reimbursement approval", %{limit: 2})
     assert result.text =~ "Refund approvals"
     assert result.source.name == "handbook.md"
-    assert result.citation_url =~ "handbook.md"
+    assert result.citation_url =~ "/admin/memory#memory-source-"
 
     assert {:ok, %{deleted_items_count: 2}} =
              DocumentIngestion.delete_source(tenant.id, source.id)

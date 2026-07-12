@@ -29,8 +29,7 @@ defmodule AndnativeAi.Sources.DocumentIngestion do
                  text: Collection.context_prefix(collection, filename) <> chunk,
                  provenance: %{
                    "filename" => filename,
-                   "stored_path" => stored.path,
-                   "permalink" => stored.url
+                   "stored_path" => stored.path
                  }
                }
              end),
@@ -38,11 +37,33 @@ defmodule AndnativeAi.Sources.DocumentIngestion do
              "tenant",
              "default"
            ) do
-      maybe_enqueue_situating(tenant_id, result.source)
-      {:ok, Map.put(result, :stored_path, stored.path)}
+      # file:// paths are useless to the person reading a Slack answer;
+      # cite the governed memory map instead, anchored to this source.
+      {:ok, source} =
+        Memory.upsert_source(tenant_id, %{
+          source_type: "document",
+          source_id: stored.id,
+          name: filename,
+          permalink_or_url: public_source_url(result.source)
+        })
+
+      maybe_enqueue_situating(tenant_id, source)
+      {:ok, %{result | source: source} |> Map.put(:stored_path, stored.path)}
     else
       [] -> {:error, :empty_document}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Where a Slack citation for an uploaded document points: the memory map."
+  def public_source_url(source) do
+    "#{public_base_url()}/admin/memory#memory-source-#{source.id}"
+  end
+
+  defp public_base_url do
+    case System.get_env("PHX_HOST", "localhost") do
+      "localhost" -> "http://localhost:4000"
+      host -> "https://" <> host
     end
   end
 

@@ -13,7 +13,21 @@ defmodule AndnativeAi.Slack.SocketModeConnection do
   def handle_frame({:text, payload}, state) do
     case Jason.decode(payload) do
       {:ok, %{"envelope_id" => envelope_id} = envelope} ->
-        handle_envelope(envelope, state)
+        # Ack immediately: Slack resends envelopes not acked within ~3s,
+        # and a model-backed answer takes longer than that — processing
+        # inline caused duplicate replies. Retries are skipped outright as
+        # a second guard.
+        cond do
+          retry?(envelope) ->
+            :ok
+
+          state[:sync_processing] ->
+            handle_envelope(envelope, state)
+
+          true ->
+            Task.start(fn -> handle_envelope(envelope, state) end)
+        end
+
         {:reply, {:text, Jason.encode!(%{envelope_id: envelope_id})}, state}
 
       {:ok, %{"type" => "hello"}} ->
@@ -45,6 +59,15 @@ defmodule AndnativeAi.Slack.SocketModeConnection do
 
     {:ok, state}
   end
+
+  @doc "Slack marks redelivered envelopes; we ack them but never reprocess."
+  def retry?(%{"retry_attempt" => attempt}) when is_integer(attempt) and attempt > 0, do: true
+
+  def retry?(%{"payload" => %{"retry_attempt" => attempt}})
+      when is_integer(attempt) and attempt > 0,
+      do: true
+
+  def retry?(_envelope), do: false
 
   defp handle_envelope(%{"payload" => %{"event" => event} = payload}, state) do
     case Installations.resolve_payload(payload, state.fallback_tenant_id, state.opts) do
