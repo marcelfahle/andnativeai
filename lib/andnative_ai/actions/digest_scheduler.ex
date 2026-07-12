@@ -22,7 +22,7 @@ defmodule AndnativeAi.Actions.DigestScheduler do
     channel =
       tenant.id
       |> Memory.list_sources()
-      |> Enum.filter(&(&1.source_type == "slack_channel"))
+      |> Enum.filter(&(&1.source_type == "slack_channel" and not is_nil(&1.last_ingested_at)))
       |> Enum.max_by(& &1.last_ingested_at, DateTime, fn -> nil end)
 
     if channel do

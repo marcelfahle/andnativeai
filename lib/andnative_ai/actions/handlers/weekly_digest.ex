@@ -26,9 +26,7 @@ defmodule AndnativeAi.Actions.Handlers.WeeklyDigest do
       |> Repo.all()
       |> Map.new()
 
-    new_sources =
-      Memory.list_sources(tenant_id)
-      |> Enum.filter(&(DateTime.compare(&1.inserted_at, since) == :gt))
+    new_sources = Memory.list_sources_since(tenant_id, since)
 
     governance =
       AuditEvent
