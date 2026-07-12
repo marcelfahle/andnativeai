@@ -222,7 +222,12 @@ Path:
 
 Behavior:
 
-- Embeddings are local deterministic vectors for PoC repeatability.
+- Embeddings dispatch to a provider: OpenAI text-embedding-3-small when
+  `OPENAI_API_KEY` is set, deterministic local vectors otherwise (the
+  control plane's Memory card shows which). Document chunks get an
+  LLM-written situating context asynchronously after ingest and are
+  re-embedded as context + text. Switching providers requires
+  `Release.reembed_memory/0`.
 - pgvector finds candidate rows.
 - A lexical rerank orders exact term matches ahead of fuzzy vector matches.
 - Results with zero lexical overlap are rejected to avoid unrelated answers.

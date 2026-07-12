@@ -1,5 +1,42 @@
 defmodule AndnativeAi.Memory.Embeddings do
+  @moduledoc """
+  Embedding dispatch. The provider is chosen once per deployment
+  (`:embeddings_provider` app env, else OpenAI when `OPENAI_API_KEY` is set,
+  else the deterministic demo embedder) — queries and chunks must live in
+  the same vector space, so never mix providers within one corpus without
+  re-embedding (`AndnativeAi.Release.reembed_memory/0`).
+  """
+
   @dimensions 1536
+
+  def dimensions, do: @dimensions
+
+  def embed(text) when is_binary(text), do: provider().embed(text)
+
+  def provider do
+    Application.get_env(:andnative_ai, :embeddings_provider) || default_provider()
+  end
+
+  @doc "Human label for the control plane, so demos are honest about mode."
+  def provider_label do
+    case provider() do
+      AndnativeAi.Memory.Embeddings.OpenAI -> "OpenAI text-embedding-3-small"
+      AndnativeAi.Memory.Embeddings.Deterministic -> "deterministic demo embeddings"
+      module -> inspect(module)
+    end
+  end
+
+  defp default_provider do
+    api_key = System.get_env("OPENAI_API_KEY", "")
+
+    if api_key != "" and not String.contains?(api_key, "replace-me") do
+      AndnativeAi.Memory.Embeddings.OpenAI
+    else
+      AndnativeAi.Memory.Embeddings.Deterministic
+    end
+  end
+
+  # Lexical terms for the rerank layer (provider-independent).
 
   @synonyms %{
     "approval" => ~w(approval approve approved authorization authorize),
@@ -16,21 +53,15 @@ defmodule AndnativeAi.Memory.Embeddings do
     "owner" => ~w(owner own owns owned)
   }
 
-  def dimensions, do: @dimensions
-
-  def embed(text) when is_binary(text) do
-    text
-    |> tokens()
-    |> Enum.flat_map(&expand_token/1)
-    |> vectorize()
-    |> Pgvector.new()
+  def search_terms(text) when is_binary(text) do
+    text |> expanded_tokens() |> MapSet.new()
   end
 
-  def search_terms(text) when is_binary(text) do
+  @doc false
+  def expanded_tokens(text) when is_binary(text) do
     text
     |> tokens()
     |> Enum.flat_map(&expand_token/1)
-    |> MapSet.new()
   end
 
   defp tokens(text) do
@@ -58,30 +89,5 @@ defmodule AndnativeAi.Memory.Embeddings do
 
   defp expand_token(token) do
     [token | Map.get(@synonyms, token, [])]
-  end
-
-  defp vectorize([]), do: List.duplicate(0.0, @dimensions)
-
-  defp vectorize(tokens) do
-    weights =
-      Enum.reduce(tokens, %{}, fn token, acc ->
-        index = :erlang.phash2(token, @dimensions)
-        sign = if rem(:erlang.phash2("sign:" <> token), 2) == 0, do: 1.0, else: -1.0
-        Map.update(acc, index, sign, &(&1 + sign))
-      end)
-
-    norm =
-      weights
-      |> Map.values()
-      |> Enum.reduce(0.0, fn value, sum -> sum + value * value end)
-      |> :math.sqrt()
-
-    if norm == 0.0 do
-      List.duplicate(0.0, @dimensions)
-    else
-      for index <- 0..(@dimensions - 1) do
-        Map.get(weights, index, 0.0) / norm
-      end
-    end
   end
 end

@@ -278,3 +278,30 @@ Why:
 
 Phase 2 (scripted skills in a sandboxed executor) is deliberately out of
 scope until a real need exists.
+
+## DEC-018: Embeddings Are Provider-Pluggable; Chunks Get Situated
+
+`Embeddings.embed/1` dispatches to a configured provider: OpenAI
+`text-embedding-3-small` (1536 dims, matching the pgvector column) when
+`OPENAI_API_KEY` is set, the deterministic demo embedder otherwise. Queries
+and chunks must share one vector space — switching providers requires
+`AndnativeAi.Release.reembed_memory/0`. Document chunks are additionally
+"situated" asynchronously after ingest (Anthropic Contextual Retrieval): an
+LLM writes a 1-2 sentence context per chunk and the chunk is re-embedded as
+context + text. `scripts/retrieval-eval.exs` measures top-3 hit rate per
+provider.
+
+Why:
+
+- Contextual chunk situating has the strongest published retrieval
+  evidence (49-67% fewer retrieval failures) and costs ~$1/M document
+  tokens at appliance scale.
+- Ingest stays fast (situating runs in an Oban :memory queue) and works
+  credential-free (situating and provider embeddings simply stay off).
+- The lexical rerank guard (DEC-006) stays in place for both providers.
+- Provider API failures fall back to deterministic vectors for the affected
+  chunks (loudly logged). Those rows live in a different vector space until
+  healed — `Release.reembed_memory/0` re-embeds the corpus, and the lexical
+  guard prevents nonsense results in the meantime. Failing ingest outright
+  was rejected: losing a customer upload is worse than a temporarily
+  degraded ranking.
