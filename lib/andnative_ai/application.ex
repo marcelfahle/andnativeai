@@ -32,8 +32,14 @@ defmodule AndnativeAi.Application do
 
   defp service_children do
     case System.get_env("SERVICE_ROLE") do
-      "slack-listener" -> [AndnativeAi.Slack.SocketModeListener]
-      _role -> []
+      "slack-listener" ->
+        [
+          {Task.Supervisor, name: AndnativeAi.Slack.TaskSupervisor},
+          AndnativeAi.Slack.SocketModeListener
+        ]
+
+      _role ->
+        []
     end
   end
 end

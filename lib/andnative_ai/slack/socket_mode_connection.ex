@@ -25,7 +25,9 @@ defmodule AndnativeAi.Slack.SocketModeConnection do
             handle_envelope(envelope, state)
 
           true ->
-            Task.start(fn -> handle_envelope(envelope, state) end)
+            Task.Supervisor.start_child(AndnativeAi.Slack.TaskSupervisor, fn ->
+              handle_envelope(envelope, state)
+            end)
         end
 
         {:reply, {:text, Jason.encode!(%{envelope_id: envelope_id})}, state}
