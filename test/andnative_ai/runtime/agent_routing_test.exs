@@ -104,6 +104,20 @@ defmodule AndnativeAi.Runtime.AgentRoutingTest do
     assert_received {:dispatched, "Bran", _question}
   end
 
+  test "mentions inside the question survive routing", %{tenant: tenant} do
+    assert {:ok, _response} =
+             Responder.respond_to_slack(
+               tenant.id,
+               mention("<@UBOT> jack: ask <@U123> for the launch status"),
+               adapter: EchoAdapter,
+               client: IdentityCapturingClient,
+               bot_token: "xoxb-test"
+             )
+
+    assert_received {:dispatched, "Jack", question}
+    assert question == "ask <@U123> for the launch status"
+  end
+
   test "an agent name mid-sentence does not reroute", %{tenant: tenant} do
     assert {:ok, _response} =
              Responder.respond_to_slack(

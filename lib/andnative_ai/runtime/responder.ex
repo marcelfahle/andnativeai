@@ -130,10 +130,13 @@ defmodule AndnativeAi.Runtime.Responder do
   defp route_by_name(tenant_id, slack_event) do
     agents = Memory.list_agents(tenant_id)
 
+    # Strip only the LEADING bot mention(s): a mention inside the question
+    # ("jack: ask <@U123> for status") is part of the request and must
+    # survive routing.
     text =
       (slack_event["text"] || "")
-      |> String.replace(~r/<@[^>]+>/, "")
       |> String.trim_leading()
+      |> then(&Regex.replace(~r/^(?:<@[^>]+>\s*)+/, &1, ""))
 
     case Enum.find(agents, &name_addressed?(&1, text)) do
       nil ->
