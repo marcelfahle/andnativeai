@@ -71,6 +71,42 @@ defmodule AndnativeAi.Runtime.AuditEventKinds do
       tone: :ready,
       category: :runtime
     },
+    "skill_installed" => %{
+      label: "Skill installed",
+      icon: "hero-puzzle-piece",
+      tone: :ready,
+      category: :governance
+    },
+    "skill_removed" => %{
+      label: "Skill removed",
+      icon: "hero-puzzle-piece",
+      tone: :warning,
+      category: :governance
+    },
+    "skill_enabled" => %{
+      label: "Skill enabled",
+      icon: "hero-puzzle-piece",
+      tone: :ready,
+      category: :governance
+    },
+    "skill_disabled" => %{
+      label: "Skill disabled",
+      icon: "hero-puzzle-piece",
+      tone: :warning,
+      category: :governance
+    },
+    "skill_rejected" => %{
+      label: "Skill rejected",
+      icon: "hero-shield-exclamation",
+      tone: :warning,
+      category: :governance
+    },
+    "skill_used" => %{
+      label: "Skill used",
+      icon: "hero-puzzle-piece",
+      tone: :ready,
+      category: :runtime
+    },
     "action_requested" => %{
       label: "Action requested",
       icon: "hero-bolt",

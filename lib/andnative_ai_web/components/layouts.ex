@@ -63,6 +63,9 @@ defmodule AndnativeAiWeb.Layouts do
           <.link navigate={~p"/admin/runtime"} class="btn btn-ghost btn-sm">
             <.icon name="hero-command-line" class="size-4" /> Runtime
           </.link>
+          <.link navigate={~p"/admin/skills"} class="btn btn-ghost btn-sm">
+            <.icon name="hero-puzzle-piece" class="size-4" /> Skills
+          </.link>
           <.link navigate={~p"/admin/prospects"} class="btn btn-ghost btn-sm">
             <.icon name="hero-light-bulb" class="size-4" /> Discover
           </.link>

@@ -4,6 +4,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Agent
   alias AndnativeAi.Runtime.{Audit, MemoryTool, OpenAIClient}
+  alias AndnativeAi.Skills
 
   @impl true
   def sync_agent(%Agent{} = agent) do
@@ -23,7 +24,20 @@ defmodule AndnativeAi.Runtime.OpenClaw do
     case MemoryTool.call(%{tenant_id: agent.tenant_id, query: question, limit: 3}) do
       {:ok, results} ->
         record_memory_searched(agent, request_id, results)
-        response = compose_response(agent, question, results)
+
+        enabled_skills = Skills.enabled_skills(agent.id)
+        selected_skill = Skills.select_for_text(enabled_skills, question)
+
+        if selected_skill do
+          Skills.record_skill_used(agent.tenant_id, agent.id, request_id, selected_skill)
+        end
+
+        response =
+          compose_response(agent, question, results, %{
+            enabled: enabled_skills,
+            selected: selected_skill
+          })
+
         record_answer_generated(agent, request_id, response, results)
         record_model_runtime_error(agent, request_id, response)
         record_citation_attached(agent, request_id, response.citations)
@@ -82,11 +96,11 @@ defmodule AndnativeAi.Runtime.OpenClaw do
     }
   end
 
-  defp compose_response(agent, question, results) do
+  defp compose_response(agent, question, results, skills) do
     citations = citations(results)
 
     {answer, status, fallback_reason, runtime_error_reason} =
-      case model_response(agent, question, results, citations) do
+      case model_response(agent, question, results, citations, skills) do
         {:ok, text} ->
           {ensure_citations(text, citations), "model", nil, nil}
 
@@ -106,7 +120,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
     }
   end
 
-  defp model_response(agent, question, results, citations) do
+  defp model_response(agent, question, results, citations, skills) do
     api_key = System.get_env("OPENAI_API_KEY", "")
 
     cond do
@@ -120,7 +134,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
         request = %{
           api_key: api_key,
           model: model(agent),
-          instructions: model_instructions(agent),
+          instructions: model_instructions(agent) <> skills_instructions(skills),
           input: model_input(question, results, citations),
           max_output_tokens: 240
         }
@@ -174,6 +188,35 @@ defmodule AndnativeAi.Runtime.OpenClaw do
     Keep answers concise and include the provided citation URLs when using memory.
     """
   end
+
+  # Progressive disclosure per the Agent Skills spec: enabled skills
+  # contribute only name+description; a skill's body loads when the request
+  # names it.
+  defp skills_instructions(%{enabled: []}), do: ""
+
+  defp skills_instructions(%{enabled: enabled, selected: selected}) do
+    metadata = """
+
+
+    Installed skills (govern how to do specific tasks):
+    #{Skills.prompt_metadata(enabled)}
+    """
+
+    case selected do
+      nil ->
+        metadata
+
+      skill ->
+        metadata <>
+          """
+
+          The request invokes the skill "#{skill.name}". Follow it:
+          #{skill.body}
+          """
+    end
+  end
+
+  defp skills_instructions(_skills), do: ""
 
   defp model_input(question, results, citations) do
     """
