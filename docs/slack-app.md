@@ -28,6 +28,7 @@ oauth_config:
       - channels:history
       - channels:read
       - chat:write
+      - chat:write.customize
 settings:
   event_subscriptions:
     bot_events:
@@ -68,6 +69,8 @@ Go to **OAuth & Permissions** and add these **Bot Token Scopes**:
 - `channels:history`: read recent public-channel messages for backfill.
 - `channels:read`: read public-channel metadata.
 - `chat:write`: post answers back to Slack.
+- `chat:write.customize`: post under each agent's display name, so several
+  agents behind one app read as distinct colleagues in-channel.
 
 Private-channel scopes are intentionally deferred for the one-week PoC.
 
@@ -140,7 +143,7 @@ SLACK_HISTORY_LIMIT=50
 SLACK_CLIENT_ID=123.456
 SLACK_CLIENT_SECRET=replace-me
 SLACK_REDIRECT_URI=http://localhost:4000/slack/oauth/callback
-SLACK_BOT_SCOPES=app_mentions:read,channels:history,channels:read,chat:write
+SLACK_BOT_SCOPES=app_mentions:read,channels:history,channels:read,chat:write,chat:write.customize
 ```
 
 `SLACK_SIGNING_SECRET` is present in `.env.example` for future HTTP endpoint
@@ -269,3 +272,18 @@ docker compose exec -T control-panel mix run scripts/reset-demo-memory.exs
 - No Slack permalink citation: confirm `chat.getPermalink` can access the
   channel. The code falls back to a `slack://channel/...` citation if Slack does
   not return a permalink.
+
+## Talking to a specific agent
+
+One Slack app can front several agents. Address one by starting the
+message with its name after the mention:
+
+```
+@andnative-ai bran: draft a landing page for the spring launch
+@andnative-ai jack: research: EU AI act obligations for SMEs
+```
+
+The name prefix routes to that agent (its role, skills, and model policy)
+and is stripped before intent matching, so `research:`/`write:` actions
+work per agent. Without a prefix the first configured agent answers.
+Replies post under the agent's display name via `chat:write.customize`.

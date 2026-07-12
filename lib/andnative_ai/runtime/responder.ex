@@ -8,7 +8,7 @@ defmodule AndnativeAi.Runtime.Responder do
 
   def respond_to_slack(tenant_id, slack_event, opts \\ []) do
     if mention_or_owned_thread?(slack_event, opts) do
-      agent = Keyword.get(opts, :agent) || default_agent!(tenant_id)
+      {agent, slack_event} = resolve_agent(tenant_id, slack_event, opts)
       adapter = Keyword.get(opts, :adapter, OpenClaw)
       request_id = Audit.request_id_from_event(slack_event)
       slack_event = Map.put(slack_event, "_andnative_request_id", request_id)
@@ -31,7 +31,7 @@ defmodule AndnativeAi.Runtime.Responder do
     case adapter.dispatch_mention(agent, slack_event) do
       {:ok, response} ->
         slack_event
-        |> maybe_post_response(response.answer <> sources_footer(response), opts)
+        |> maybe_post_response(response.answer <> sources_footer(response), opts, agent)
         |> record_post_result(tenant_id, agent, slack_event, request_id)
 
         {:ok, Map.put_new(response, :request_id, request_id)}
@@ -65,7 +65,7 @@ defmodule AndnativeAi.Runtime.Responder do
               end
           end
 
-        maybe_post_response(slack_event, ack, opts)
+        maybe_post_response(slack_event, ack, opts, agent)
 
         {:ok, %{action: action, request_id: request_id}}
 
@@ -75,7 +75,8 @@ defmodule AndnativeAi.Runtime.Responder do
         maybe_post_response(
           slack_event,
           "I couldn't start that action — the error is on the audit timeline.",
-          opts
+          opts,
+          agent
         )
 
         {:error, reason}
@@ -115,38 +116,68 @@ defmodule AndnativeAi.Runtime.Responder do
 
   defp mention_or_owned_thread?(_event, _opts), do: false
 
-  defp default_agent!(tenant_id) do
-    case Memory.list_agents(tenant_id) do
-      [agent | _] -> agent
-      [] -> raise "No agent configured for tenant #{tenant_id}"
+  # Name routing: one Slack app, many agents. A message addressed
+  # "bran: draft a landing page" routes to the agent named Bran and the
+  # prefix is stripped so intents and the model see a clean question.
+  # No prefix (or an unknown name) falls back to the first agent.
+  defp resolve_agent(tenant_id, slack_event, opts) do
+    case Keyword.get(opts, :agent) do
+      nil -> route_by_name(tenant_id, slack_event)
+      agent -> {agent, slack_event}
     end
   end
 
-  defp maybe_post_response(%{"channel" => channel} = event, answer, opts) do
+  defp route_by_name(tenant_id, slack_event) do
+    agents = Memory.list_agents(tenant_id)
+
+    text =
+      (slack_event["text"] || "")
+      |> String.replace(~r/<@[^>]+>/, "")
+      |> String.trim_leading()
+
+    case Enum.find(agents, &name_addressed?(&1, text)) do
+      nil ->
+        case agents do
+          [first | _rest] -> {first, slack_event}
+          [] -> raise "No agent configured for tenant #{tenant_id}"
+        end
+
+      agent ->
+        question = Regex.replace(name_prefix_pattern(agent), text, "")
+        {agent, Map.put(slack_event, "text", question)}
+    end
+  end
+
+  defp name_addressed?(agent, text) do
+    Regex.match?(name_prefix_pattern(agent), text)
+  end
+
+  defp name_prefix_pattern(agent) do
+    ~r/^#{Regex.escape(agent.name)}\s*[:,—-]?\s+/iu
+  end
+
+  defp maybe_post_response(%{"channel" => channel} = event, answer, opts, agent \\ nil) do
     client = Keyword.get(opts, :client, Client)
     bot_token = Keyword.get(opts, :bot_token, "")
+    thread_ts = event["thread_ts"] || event["ts"]
+    text = AndnativeAi.Slack.Mrkdwn.from_markdown(answer)
 
-    if bot_token != "" and function_exported?(client, :post_message, 4) do
-      thread_ts = event["thread_ts"] || event["ts"]
+    Code.ensure_loaded?(client)
 
-      client.post_message(
-        bot_token,
-        channel,
-        AndnativeAi.Slack.Mrkdwn.from_markdown(answer),
-        thread_ts
-      )
-    else
-      skipped_post_reason(bot_token, client)
-    end
-  end
+    cond do
+      bot_token == "" ->
+        {:error, :missing_bot_token}
 
-  defp skipped_post_reason("", _client), do: {:error, :missing_bot_token}
+      # Post under the agent's display name so multiple agents behind one
+      # Slack app read as distinct colleagues in-channel.
+      agent && function_exported?(client, :post_message, 5) ->
+        client.post_message(bot_token, channel, text, thread_ts, username: agent.name)
 
-  defp skipped_post_reason(_bot_token, client) do
-    if function_exported?(client, :post_message, 4) do
-      :skipped
-    else
-      {:error, :unsupported_slack_client}
+      function_exported?(client, :post_message, 4) ->
+        client.post_message(bot_token, channel, text, thread_ts)
+
+      true ->
+        {:error, :unsupported_slack_client}
     end
   end
 
