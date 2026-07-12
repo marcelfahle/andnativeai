@@ -48,11 +48,22 @@ defmodule AndnativeAiWeb.SourceReaderController do
   defp stored_file_markdown(tenant_id, source) do
     with [item | _rest] <- Memory.list_source_memory_items(tenant_id, source.id),
          path when is_binary(path) <- item.provenance["stored_path"],
+         true <- safe_source_path?(path),
          {:ok, markdown} <- File.read(path) do
       {:ok, markdown}
     else
       _unavailable -> :error
     end
+  end
+
+  # stored_path comes from the database; even authenticated readers must
+  # never turn it into an arbitrary-file read. Only regular files under
+  # the configured raw-sources root are served.
+  defp safe_source_path?(path) do
+    root = Path.expand(AndnativeAi.Sources.DocumentIngestion.raw_sources_path())
+    expanded = Path.expand(path)
+
+    String.starts_with?(expanded, root <> "/") and File.regular?(expanded)
   end
 
   defp chunk_markdown(tenant_id, source) do

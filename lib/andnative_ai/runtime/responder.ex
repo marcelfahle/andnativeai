@@ -88,12 +88,24 @@ defmodule AndnativeAi.Runtime.Responder do
     links =
       refs
       |> Enum.take(3)
-      |> Enum.map_join(" · ", fn %{name: name, url: url} -> "<#{url}|#{name}>" end)
+      |> Enum.map_join(" · ", fn %{name: name, url: url} ->
+        "<#{url}|#{link_label(name)}>"
+      end)
 
     "\n\n_Sources: #{links}_"
   end
 
   defp sources_footer(_response), do: ""
+
+  # Names are user-controlled (uploaded filenames); keep them from breaking
+  # Slack's <url|label> syntax or smuggling mrkdwn.
+  defp link_label(name) do
+    name
+    |> String.replace("&", "&amp;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
+    |> String.replace("|", "/")
+  end
 
   defp mention_or_owned_thread?(%{"type" => "app_mention"}, _opts), do: true
 
