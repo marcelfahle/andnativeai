@@ -80,8 +80,16 @@ defmodule AndnativeAiWeb.Admin.AgentsLive do
   end
 
   def handle_event("edit", %{"id" => id}, socket) do
-    agent = Memory.get_agent!(socket.assigns.tenant.id, String.to_integer(id))
+    case fetch_agent(socket, id) do
+      nil ->
+        {:noreply, socket}
 
+      agent ->
+        {:noreply, socket |> assign(:editing_agent_id, id) |> assign(:form, edit_form(agent))}
+    end
+  end
+
+  defp edit_form(agent) do
     form =
       to_form(
         %{
@@ -93,7 +101,7 @@ defmodule AndnativeAiWeb.Admin.AgentsLive do
         as: :agent
       )
 
-    {:noreply, socket |> assign(:editing_agent_id, id) |> assign(:form, form)}
+    form
   end
 
   def handle_event("new", _params, socket) do
@@ -102,24 +110,27 @@ defmodule AndnativeAiWeb.Admin.AgentsLive do
   end
 
   def handle_event("sync", %{"id" => id}, socket) do
-    agent = Memory.get_agent!(socket.assigns.tenant.id, String.to_integer(id))
+    case fetch_agent(socket, id) do
+      nil ->
+        {:noreply, socket}
 
-    socket =
-      case OpenClaw.sync_agent(agent) do
-        {:ok, _agent} -> put_flash(socket, :info, "Agent synced.")
-        {:error, reason} -> put_flash(socket, :error, "Sync failed: #{inspect(reason)}")
-      end
-      |> reload_agents()
+      agent ->
+        socket =
+          case OpenClaw.sync_agent(agent) do
+            {:ok, _agent} -> put_flash(socket, :info, "Agent synced.")
+            {:error, reason} -> put_flash(socket, :error, "Sync failed: #{inspect(reason)}")
+          end
+          |> reload_agents()
 
-    {:noreply, socket}
+        {:noreply, socket}
+    end
   end
 
   # Model policy is platform-staff territory: every handler below re-checks
   # the role server-side; the UI merely hides the affordances.
   def handle_event("edit-policy", %{"id" => id}, socket) do
-    if socket.assigns.superadmin? do
-      agent = Memory.get_agent!(socket.assigns.tenant.id, String.to_integer(id))
-
+    with true <- socket.assigns.superadmin?,
+         %Memory.Agent{} = agent <- fetch_agent(socket, id) do
       params =
         %{"model" => agent.model || ""}
         |> Map.merge(
@@ -133,7 +144,7 @@ defmodule AndnativeAiWeb.Admin.AgentsLive do
        |> assign(:policy_agent, agent)
        |> assign(:policy_form, to_form(params, as: :policy))}
     else
-      {:noreply, socket}
+      _not_allowed -> {:noreply, socket}
     end
   end
 
@@ -172,15 +183,21 @@ defmodule AndnativeAiWeb.Admin.AgentsLive do
 
   defp reload_agents(socket) do
     agents = Memory.list_agents(socket.assigns.tenant.id)
-
-    skills_by_agent =
-      Map.new(agents, fn agent ->
-        {agent.id, Skills.enabled_skills(agent.id)}
-      end)
+    skills_by_agent = Skills.enabled_skills_by_agent(Enum.map(agents, & &1.id))
 
     socket
     |> assign(:agents, agents)
     |> assign(:skills_by_agent, skills_by_agent)
+  end
+
+  # LiveView events carry user-controlled ids; never crash on garbage.
+  defp fetch_agent(socket, raw_id) do
+    with {id, ""} <- Integer.parse(raw_id),
+         %Memory.Agent{} = agent <- Memory.get_agent(socket.assigns.tenant.id, id) do
+      agent
+    else
+      _invalid -> nil
+    end
   end
 
   defp role_label(role), do: Map.get(@role_labels, role, role)
@@ -237,7 +254,7 @@ defmodule AndnativeAiWeb.Admin.AgentsLive do
                 <div>
                   <h2 class="text-base font-semibold">Model policy — {@policy_agent.name}</h2>
                   <p class="mt-1 text-xs text-base-content/60">
-                    Platform staff only. Changes are recorded on the governance trail.
+                    Platform staff only (OpenAI model IDs for now). Changes are recorded on the governance trail.
                   </p>
                 </div>
                 <button id="close-policy" class="btn btn-ghost btn-xs" phx-click="close-policy">
@@ -304,11 +321,11 @@ defmodule AndnativeAiWeb.Admin.AgentsLive do
                     </span>
                   </div>
                   <div
-                    :if={@skills_by_agent[agent.id] != []}
+                    :if={Map.get(@skills_by_agent, agent.id, []) != []}
                     class="mt-2 flex flex-wrap items-center gap-1.5 text-xs"
                   >
                     <span
-                      :for={skill <- @skills_by_agent[agent.id]}
+                      :for={skill <- Map.get(@skills_by_agent, agent.id, [])}
                       class="badge badge-ghost badge-sm"
                     >
                       {skill.name} v{skill.version}

@@ -122,6 +122,10 @@ defmodule AndnativeAi.Memory do
     Repo.all(from agent in Agent, where: agent.tenant_id == ^tenant_id, order_by: agent.name)
   end
 
+  def get_agent(tenant_id, id) do
+    Repo.get_by(Agent, id: id, tenant_id: tenant_id)
+  end
+
   def get_agent!(tenant_id, id) do
     Repo.get_by!(Agent, id: id, tenant_id: tenant_id)
   end
