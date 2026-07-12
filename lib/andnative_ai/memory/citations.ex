@@ -1,12 +1,12 @@
 defmodule AndnativeAi.Memory.Citations do
   @moduledoc """
   Builds the public URLs cited in Slack answers. Document citations always
-  point at the governed memory map — computed at citation time so stale
+  point at the source reader — computed at citation time so stale
   `file://` permalinks stored before this existed can never resurface.
   """
 
   def document_url(source_id) do
-    "#{public_base_url()}/admin/memory#memory-source-#{source_id}"
+    "#{public_base_url()}/sources/#{source_id}"
   end
 
   # Derives the base URL from the endpoint's :url config (the same values

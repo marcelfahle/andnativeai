@@ -51,6 +51,9 @@ defmodule AndnativeAiWeb.Router do
     # Starting the Slack install flow requires a logged-in admin.
     get "/slack/install", SlackOAuthController, :install
 
+    # Where Slack citations land: the cited source as a readable document.
+    get "/sources/:id", SourceReaderController, :show
+
     live_session :require_authenticated_user,
       on_mount: [{AndnativeAiWeb.UserAuth, :require_authenticated}] do
       live "/admin/control-plane", Admin.ControlPlaneLive

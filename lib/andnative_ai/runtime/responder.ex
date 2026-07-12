@@ -31,7 +31,7 @@ defmodule AndnativeAi.Runtime.Responder do
     case adapter.dispatch_mention(agent, slack_event) do
       {:ok, response} ->
         slack_event
-        |> maybe_post_response(response.answer, opts)
+        |> maybe_post_response(response.answer <> sources_footer(response), opts)
         |> record_post_result(tenant_id, agent, slack_event, request_id)
 
         {:ok, Map.put_new(response, :request_id, request_id)}
@@ -81,6 +81,19 @@ defmodule AndnativeAi.Runtime.Responder do
         {:error, reason}
     end
   end
+
+  # A compact, link-only footer: the reader page (or Slack permalink) does
+  # the heavy lifting, the answer stays clean.
+  defp sources_footer(%{source_refs: [_ref | _] = refs}) do
+    links =
+      refs
+      |> Enum.take(3)
+      |> Enum.map_join(" · ", fn %{name: name, url: url} -> "<#{url}|#{name}>" end)
+
+    "\n\n_Sources: #{links}_"
+  end
+
+  defp sources_footer(_response), do: ""
 
   defp mention_or_owned_thread?(%{"type" => "app_mention"}, _opts), do: true
 
