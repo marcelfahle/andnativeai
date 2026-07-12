@@ -37,7 +37,7 @@ defmodule AndnativeAi.Slack.SecretsEncryptionTest do
 
     assert is_binary(raw)
     refute raw == "xoxb-super-secret-token"
-    refute String.contains?(raw, "super-secret")
+    assert :binary.match(raw, "super-secret") == :nomatch
   end
 
   test "oauth client secrets are ciphertext at rest" do
@@ -59,7 +59,7 @@ defmodule AndnativeAi.Slack.SecretsEncryptionTest do
       Repo.query!("SELECT client_secret FROM slack_oauth_configs WHERE id = $1", [config.id])
 
     refute raw == "shhh-oauth-client-secret"
-    refute String.contains?(raw, "oauth-client")
+    assert :binary.match(raw, "oauth-client") == :nomatch
   end
 
   test "inspect never leaks the secrets" do
