@@ -12,7 +12,7 @@ defmodule AndnativeAi.Repo.Migrations.SeedFirstAdmin do
   @email "m.fahle@gmail.com"
 
   def up do
-    unless test_database?() do
+    unless test_database?() or provisioned_appliance?() do
       hashed_password = Bcrypt.hash_pwd_salt("changeme123")
 
       repo().query!(
@@ -44,6 +44,13 @@ defmodule AndnativeAi.Repo.Migrations.SeedFirstAdmin do
       _ ->
         :ok
     end
+  end
+
+  # Provisioned appliances (provision-appliance.sh) seed their own first
+  # admin via SEED_ADMIN_EMAIL; the demo bootstrap account with its default
+  # password must never exist on a customer box.
+  defp provisioned_appliance? do
+    System.get_env("SEED_ADMIN_EMAIL") not in [nil, ""]
   end
 
   # The test database name carries an optional MIX_TEST_PARTITION suffix

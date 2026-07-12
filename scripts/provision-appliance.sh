@@ -72,30 +72,46 @@ SECRET_KEY_BASE="$(openssl rand -base64 48 | tr -d '\n')"
 POSTGRES_PASSWORD="$(openssl rand -hex 24)"
 MINIO_ROOT_PASSWORD="$(openssl rand -hex 24)"
 CLOAK_KEY="$(openssl rand -base64 32)"
-ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-20)"
+# hex: fixed length, always clears the 12-char minimum password validation.
+ADMIN_PASSWORD="$(openssl rand -hex 10)"
 
-# sed is avoided on purpose: generated secrets can contain any delimiter.
+# Values reach python through the environment (never interpolated into
+# code — secrets and user input cannot break or inject the renderer), and
+# the file is created 0600 before any secret is written.
 TEMPLATE="$REPO_DIR/deploy/appliance.env.template"
-python3 - "$TEMPLATE" "$BASE/.env" <<PYEOF
+env TPL_DOMAIN="$DOMAIN" \
+  TPL_SECRET_KEY_BASE="$SECRET_KEY_BASE" \
+  TPL_POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  TPL_MINIO_ROOT_PASSWORD="$MINIO_ROOT_PASSWORD" \
+  TPL_CLOAK_KEY="$CLOAK_KEY" \
+  TPL_ADMIN_EMAIL="$ADMIN_EMAIL" \
+  TPL_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+  TPL_REPO_DIR="$REPO_DIR" \
+  TPL_CADDY_NETWORK="$CADDY_NETWORK" \
+  python3 - "$TEMPLATE" "$BASE/.env" <<'PYEOF'
+import os
 import sys
+
 template_path, out_path = sys.argv[1], sys.argv[2]
-replacements = {
-    "__DOMAIN__": """$DOMAIN""",
-    "__SECRET_KEY_BASE__": """$SECRET_KEY_BASE""",
-    "__POSTGRES_PASSWORD__": """$POSTGRES_PASSWORD""",
-    "__MINIO_ROOT_PASSWORD__": """$MINIO_ROOT_PASSWORD""",
-    "__CLOAK_KEY__": """$CLOAK_KEY""",
-    "__ADMIN_EMAIL__": """$ADMIN_EMAIL""",
-    "__ADMIN_PASSWORD__": """$ADMIN_PASSWORD""",
-    "__REPO_DIR__": """$REPO_DIR""",
-    "__CADDY_NETWORK__": """$CADDY_NETWORK""",
-}
+markers = [
+    "DOMAIN",
+    "SECRET_KEY_BASE",
+    "POSTGRES_PASSWORD",
+    "MINIO_ROOT_PASSWORD",
+    "CLOAK_KEY",
+    "ADMIN_EMAIL",
+    "ADMIN_PASSWORD",
+    "REPO_DIR",
+    "CADDY_NETWORK",
+]
 content = open(template_path).read()
-for marker, value in replacements.items():
-    content = content.replace(marker, value)
-open(out_path, "w").write(content)
+for marker in markers:
+    content = content.replace(f"__{marker}__", os.environ[f"TPL_{marker}"])
+
+fd = os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, "w") as out:
+    out.write(content)
 PYEOF
-chmod 600 "$BASE/.env"
 
 cp "$REPO_DIR/deploy/appliance.compose.yml" "$BASE/compose.yml"
 
@@ -103,10 +119,16 @@ echo "==> Building and starting Compose project $PROJECT"
 "${COMPOSE[@]}" up -d --build
 
 echo "==> Waiting for the control plane to become healthy (migrations run on boot)"
+# docker inspect on the container id is stable across compose versions,
+# and every probe tolerates transient failures instead of tripping set -e.
 for _attempt in $(seq 1 60); do
-  status="$("${COMPOSE[@]}" ps --format '{{.Service}} {{.Health}}' 2>/dev/null |
-    awk '$1 == "control-panel" { print $2 }')"
-  [ "$status" = "healthy" ] && break
+  container_id="$("${COMPOSE[@]}" ps -q control-panel 2>/dev/null || true)"
+
+  if [ -n "$container_id" ]; then
+    status="$(docker inspect --format '{{.State.Health.Status}}' "$container_id" 2>/dev/null || true)"
+    [ "$status" = "healthy" ] && break
+  fi
+
   sleep 5
 done
 
