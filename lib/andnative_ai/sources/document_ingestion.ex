@@ -38,6 +38,7 @@ defmodule AndnativeAi.Sources.DocumentIngestion do
              "tenant",
              "default"
            ) do
+      maybe_enqueue_situating(tenant_id, result.source)
       {:ok, Map.put(result, :stored_path, stored.path)}
     else
       [] -> {:error, :empty_document}
@@ -150,6 +151,16 @@ defmodule AndnativeAi.Sources.DocumentIngestion do
       _unreadable ->
         ""
     end
+  end
+
+  # Contextual situating upgrades document chunks asynchronously when an
+  # LLM key is configured; ingest itself stays fast.
+  defp maybe_enqueue_situating(tenant_id, source) do
+    if AndnativeAi.Memory.SituateWorker.enabled?() do
+      AndnativeAi.Memory.SituateWorker.enqueue(tenant_id, source.id)
+    end
+
+    :ok
   end
 
   def delete_source(tenant_id, source_id), do: Service.delete_source(tenant_id, source_id)

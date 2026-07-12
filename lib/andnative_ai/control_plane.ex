@@ -165,7 +165,8 @@ defmodule AndnativeAi.ControlPlane do
         state: if(counts.memory_items == 0, do: "empty", else: "ready"),
         tone: if(counts.memory_items == 0, do: :empty, else: :ready),
         metric: "#{counts.memory_items} chunks",
-        detail: "#{counts.active_sources} active sources with source-scoped retention",
+        detail:
+          "#{counts.active_sources} active sources · #{AndnativeAi.Memory.Embeddings.provider_label()}",
         mode: card_mode(counts.memory_items > 0)
       },
       %{

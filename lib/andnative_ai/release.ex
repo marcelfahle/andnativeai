@@ -110,6 +110,20 @@ defmodule AndnativeAi.Release do
     end)
   end
 
+  @doc """
+  Re-embeds all active memory items with the currently configured
+  embedding provider (e.g. after setting OPENAI_API_KEY). Run via
+  `just prod-eval "AndnativeAi.Release.reembed_memory()"`.
+  """
+  def reembed_memory do
+    with_task_env(fn _repo ->
+      Enum.each(AndnativeAi.Memory.list_tenants(), fn tenant ->
+        count = AndnativeAi.Memory.SituateWorker.reembed_all(tenant.id)
+        IO.puts("Re-embedded #{count} memory items for #{tenant.slug}.")
+      end)
+    end)
+  end
+
   defp slack_credentials(tenant_id) do
     AndnativeAi.Slack.Installations.bot_credentials(tenant_id)
   end

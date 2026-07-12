@@ -7,6 +7,7 @@ defmodule AndnativeAi.Memory.Item do
     field :source_type, :string
     field :channel_id, :string
     field :text, :string
+    field :context, :string
     field :embedding, Pgvector.Ecto.Vector
     field :provenance, :map, default: %{}
     field :visibility, :string, default: "tenant"
@@ -26,6 +27,7 @@ defmodule AndnativeAi.Memory.Item do
       :source_type,
       :channel_id,
       :text,
+      :context,
       :embedding,
       :provenance,
       :visibility,
