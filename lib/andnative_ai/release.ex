@@ -111,19 +111,7 @@ defmodule AndnativeAi.Release do
   end
 
   defp slack_credentials(tenant_id) do
-    case AndnativeAi.Slack.Installations.latest_installation(tenant_id) do
-      %{bot_token: token, bot_user_id: user_id}
-      when is_binary(token) and token != "" and is_binary(user_id) and user_id != "" ->
-        {:ok, token, user_id}
-
-      _no_installation ->
-        with token when token != "" <- System.get_env("SLACK_BOT_TOKEN", ""),
-             user_id when user_id != "" <- System.get_env("SLACK_BOT_USER_ID", "") do
-          {:ok, token, user_id}
-        else
-          _missing -> :error
-        end
-    end
+    AndnativeAi.Slack.Installations.bot_credentials(tenant_id)
   end
 
   # Runs a task with the repo started and a PubSub instance available, so
