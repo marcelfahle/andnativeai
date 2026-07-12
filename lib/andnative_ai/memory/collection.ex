@@ -28,7 +28,13 @@ defmodule AndnativeAi.Memory.Collection do
     |> validate_length(:description, min: 10, max: 500)
     |> validate_inclusion(:kind, @kinds)
     |> put_slug()
-    |> unique_constraint([:tenant_id, :slug])
+    # error_key :name so the conflict shows up on the field the admin
+    # actually edits — the form has no slug input.
+    |> unique_constraint([:tenant_id, :slug],
+      name: :collections_tenant_id_slug_live_index,
+      error_key: :name,
+      message: "is already used by another collection"
+    )
   end
 
   defp put_slug(changeset) do

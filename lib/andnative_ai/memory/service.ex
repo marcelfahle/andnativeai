@@ -3,7 +3,7 @@ defmodule AndnativeAi.Memory.Service do
   import Pgvector.Ecto.Query
 
   alias AndnativeAi.Memory
-  alias AndnativeAi.Memory.{Embeddings, Item, Source}
+  alias AndnativeAi.Memory.{Citations, Embeddings, Item, Source}
   alias AndnativeAi.Repo
   alias AndnativeAi.Runtime.Audit
 
@@ -75,8 +75,22 @@ defmodule AndnativeAi.Memory.Service do
       }
     })
     |> Repo.all()
+    |> Enum.map(&override_document_citation/1)
     |> rerank(query, limit)
   end
+
+  # Rows ingested before memory-map URLs existed carry file:// permalinks
+  # in both source and chunk provenance — useless outside the appliance.
+  # Real web permalinks (hosted docs) stay as they are.
+  defp override_document_citation(%{source: %{type: "document"}} = result) do
+    if is_nil(result.citation_url) or String.starts_with?(result.citation_url, "file://") do
+      %{result | citation_url: Citations.document_url(result.source.id)}
+    else
+      result
+    end
+  end
+
+  defp override_document_citation(result), do: result
 
   def delete_source(tenant_id, source_id), do: Memory.soft_delete_source(tenant_id, source_id)
 
