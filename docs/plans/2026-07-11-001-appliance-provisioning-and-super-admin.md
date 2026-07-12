@@ -39,25 +39,25 @@ What "fire up an appliance" means concretely, per customer:
 One VM can host several appliances (separate Compose projects, separate
 volumes, one Caddy). Dedicated VM for customers who pay for hard isolation.
 
-- - Matches what exists; the Hetzner demo is appliance #1.
-- - Cheap (EUR ~5-15/appliance), explainable to SMEs ("your box").
-- - A provisioning script can do end-to-end bootstrap in minutes (AAI-20).
-- - Fleet operations (upgrades across N boxes) stay manual-ish: solvable
+- Pro: matches what exists; the Hetzner demo is appliance #1.
+- Pro: cheap (EUR ~5-15/appliance), explainable to SMEs ("your box").
+- Pro: a provisioning script can do end-to-end bootstrap in minutes (AAI-20).
+- Con: fleet operations (upgrades across N boxes) stay manual-ish: solvable
   with the existing rsync+Actions pattern iterated over an inventory file.
 
 ### B. Kubernetes (namespace-per-appliance)
 
-- - Fleet upgrades, secrets, and scaling become declarative; one `helm
+- Pro: fleet upgrades, secrets, and scaling become declarative; one `helm
   upgrade` rolls every appliance.
-- - Real answer at ~20+ appliances or when SLAs demand self-healing.
-- - Operational tax (cluster, CNI, storage classes, cert-manager) is not
+- Pro: the real answer at ~20+ appliances or when SLAs demand self-healing.
+- Con: operational tax (cluster, CNI, storage classes, cert-manager) is not
   justified for < 10 customers and one operator; hides the "appliance"
   story that sells.
 
 ### C. Managed PaaS (Fly.io machines / Render)
 
-- - Fastest provisioning API story.
-- - EU data residency and "runs in your environment" positioning get
+- Pro: fastest provisioning API story.
+- Con: EU data residency and "runs in your environment" positioning get
   murkier; per-app Postgres with pgvector adds cost.
 
 Recommendation: stay on A through the first paying customers, build the
