@@ -171,7 +171,7 @@ defmodule AndnativeAi.Slack.Installations do
   def default_scopes do
     System.get_env(
       "SLACK_BOT_SCOPES",
-      "app_mentions:read,channels:history,channels:read,chat:write"
+      "app_mentions:read,channels:history,channels:read,chat:write,chat:write.customize"
     )
   end
 

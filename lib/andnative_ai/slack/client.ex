@@ -33,12 +33,26 @@ defmodule AndnativeAi.Slack.Client do
   end
 
   def post_message(bot_token, channel_id, text, thread_ts) do
-    post("/chat.postMessage", bot_token, %{
-      channel: channel_id,
-      text: text,
-      thread_ts: thread_ts
-    })
+    post_message(bot_token, channel_id, text, thread_ts, [])
   end
+
+  # `username`/`icon_url` overrides need the chat:write.customize scope;
+  # without it Slack ignores them rather than failing the post.
+  def post_message(bot_token, channel_id, text, thread_ts, opts) do
+    payload =
+      %{
+        channel: channel_id,
+        text: text,
+        thread_ts: thread_ts
+      }
+      |> maybe_put(:username, opts[:username])
+      |> maybe_put(:icon_url, opts[:icon_url])
+
+    post("/chat.postMessage", bot_token, payload)
+  end
+
+  defp maybe_put(payload, _key, nil), do: payload
+  defp maybe_put(payload, key, value), do: Map.put(payload, key, value)
 
   @doc """
   Uploads a file into a channel thread using the external upload flow

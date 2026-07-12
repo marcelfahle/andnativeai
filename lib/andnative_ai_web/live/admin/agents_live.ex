@@ -89,21 +89,6 @@ defmodule AndnativeAiWeb.Admin.AgentsLive do
     end
   end
 
-  defp edit_form(agent) do
-    form =
-      to_form(
-        %{
-          "name" => agent.name,
-          "identity" => agent.identity,
-          "role" => agent.role,
-          "status" => agent.status
-        },
-        as: :agent
-      )
-
-    form
-  end
-
   def handle_event("new", _params, socket) do
     {:noreply,
      socket |> assign(:editing_agent_id, nil) |> assign(:form, to_form(@empty_agent, as: :agent))}
@@ -179,6 +164,21 @@ defmodule AndnativeAiWeb.Admin.AgentsLive do
     else
       _not_allowed -> {:noreply, socket}
     end
+  end
+
+  defp edit_form(agent) do
+    form =
+      to_form(
+        %{
+          "name" => agent.name,
+          "identity" => agent.identity,
+          "role" => agent.role,
+          "status" => agent.status
+        },
+        as: :agent
+      )
+
+    form
   end
 
   defp reload_agents(socket) do
