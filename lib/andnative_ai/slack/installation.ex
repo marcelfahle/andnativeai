@@ -9,7 +9,7 @@ defmodule AndnativeAi.Slack.Installation do
     field :enterprise_id, :string
     field :app_id, :string
     field :bot_user_id, :string
-    field :bot_token, :string
+    field :bot_token, AndnativeAi.Encrypted.Binary, redact: true
     field :bot_scopes, :string
     field :installed_by_user_id, :string
     field :status, :string, default: "active"

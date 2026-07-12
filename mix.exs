@@ -66,6 +66,8 @@ defmodule AndnativeAi.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 0.26"},
       {:bcrypt_elixir, "~> 3.0"},
+      {:cloak, "~> 1.1"},
+      {:cloak_ecto, "~> 1.3"},
       {:swoosh, "~> 1.16"},
       {:gen_smtp, "~> 1.2"},
       {:jason, "~> 1.2"},

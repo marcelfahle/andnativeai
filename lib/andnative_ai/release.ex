@@ -158,11 +158,19 @@ defmodule AndnativeAi.Release do
       {:ok, _result, _apps} =
         Ecto.Migrator.with_repo(repo, fn started_repo ->
           ensure_pubsub_started()
+          ensure_vault_started()
           fun.(started_repo)
         end)
     end
 
     :ok
+  end
+
+  defp ensure_vault_started do
+    case AndnativeAi.Vault.start_link([]) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+    end
   end
 
   defp ensure_pubsub_started do
