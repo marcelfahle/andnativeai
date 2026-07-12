@@ -1,4 +1,6 @@
 defmodule AndnativeAi.Sources.DocumentIngestion do
+  require Logger
+
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Collection
   alias AndnativeAi.Memory.Service
@@ -29,8 +31,7 @@ defmodule AndnativeAi.Sources.DocumentIngestion do
                  text: Collection.context_prefix(collection, filename) <> chunk,
                  provenance: %{
                    "filename" => filename,
-                   "stored_path" => stored.path,
-                   "permalink" => stored.url
+                   "stored_path" => stored.path
                  }
                }
              end),
@@ -38,11 +39,53 @@ defmodule AndnativeAi.Sources.DocumentIngestion do
              "tenant",
              "default"
            ) do
-      maybe_enqueue_situating(tenant_id, result.source)
-      {:ok, Map.put(result, :stored_path, stored.path)}
+      # file:// paths are useless to the person reading a Slack answer;
+      # cite the governed memory map instead, anchored to this source.
+      source =
+        case Memory.upsert_source(tenant_id, %{
+               source_type: "document",
+               source_id: stored.id,
+               name: filename,
+               permalink_or_url: public_source_url(result.source)
+             }) do
+          {:ok, source} ->
+            source
+
+          {:error, changeset} ->
+            Logger.warning(
+              "Could not update citation URL for #{filename}: #{inspect(changeset.errors)}"
+            )
+
+            result.source
+        end
+
+      maybe_enqueue_situating(tenant_id, source)
+      {:ok, %{result | source: source} |> Map.put(:stored_path, stored.path)}
     else
       [] -> {:error, :empty_document}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Where a Slack citation for an uploaded document points: the memory map."
+  def public_source_url(source) do
+    "#{public_base_url()}/admin/memory#memory-source-#{source.id}"
+  end
+
+  # Derives the base URL from the endpoint's :url config (the same values
+  # runtime.exs sets from PHX_HOST) without requiring the endpoint process,
+  # so Release tasks can build citation URLs too.
+  defp public_base_url do
+    url = Application.get_env(:andnative_ai, AndnativeAiWeb.Endpoint, [])[:url] || []
+    host = Keyword.get(url, :host, "localhost")
+    scheme = Keyword.get(url, :scheme, if(host == "localhost", do: "http", else: "https"))
+    port = Keyword.get(url, :port, if(host == "localhost", do: 4000, else: nil))
+
+    case {scheme, port} do
+      {_scheme, nil} -> "#{scheme}://#{host}"
+      {"https", 443} -> "#{scheme}://#{host}"
+      {"http", 80} -> "#{scheme}://#{host}"
+      {_scheme, port} -> "#{scheme}://#{host}:#{port}"
     end
   end
 

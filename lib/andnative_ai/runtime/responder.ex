@@ -103,7 +103,13 @@ defmodule AndnativeAi.Runtime.Responder do
 
     if bot_token != "" and function_exported?(client, :post_message, 4) do
       thread_ts = event["thread_ts"] || event["ts"]
-      client.post_message(bot_token, channel, answer, thread_ts)
+
+      client.post_message(
+        bot_token,
+        channel,
+        AndnativeAi.Slack.Mrkdwn.from_markdown(answer),
+        thread_ts
+      )
     else
       skipped_post_reason(bot_token, client)
     end

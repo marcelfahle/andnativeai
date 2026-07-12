@@ -79,7 +79,9 @@ defmodule AndnativeAi.Actions.Worker do
         client = slack_client()
 
         message =
-          "#{result.title} is ready. #{result.summary}" <> citation_suffix(result)
+          AndnativeAi.Slack.Mrkdwn.from_markdown(
+            "*#{result.title}* is ready. #{result.summary}" <> citation_suffix(result)
+          )
 
         client.post_message(bot_token, action.slack_channel_id, message, action.slack_thread_ts)
 
