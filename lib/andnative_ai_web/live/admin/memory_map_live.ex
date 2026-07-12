@@ -45,11 +45,36 @@ defmodule AndnativeAiWeb.Admin.MemoryMapLive do
     tenant_id = socket.assigns.tenant.id
     sources = Memory.list_all_sources(tenant_id)
     chunk_counts = Memory.active_item_counts_by_source(tenant_id)
+    collections = Memory.list_collections(tenant_id)
+
+    {collected_sources, loose_sources} =
+      Enum.split_with(sources, fn source ->
+        source.collection_id && Enum.any?(collections, &(&1.id == source.collection_id))
+      end)
+
+    sources_by_collection = Enum.group_by(collected_sources, & &1.collection_id)
+
+    collection_groups =
+      Enum.map(collections, fn collection ->
+        group_sources =
+          sources_by_collection
+          |> Map.get(collection.id, [])
+          |> Enum.sort_by(&{!is_nil(&1.deleted_at), &1.name})
+
+        active = Enum.reject(group_sources, & &1.deleted_at)
+
+        %{
+          collection: collection,
+          sources: group_sources,
+          active_count: length(active),
+          chunk_count: active |> Enum.map(&Map.get(chunk_counts, &1.id, 0)) |> Enum.sum()
+        }
+      end)
 
     groups =
       Enum.map(group_definitions(), fn definition ->
         group_sources =
-          sources
+          loose_sources
           |> Enum.filter(&(&1.source_type in definition.source_types))
           |> Enum.sort_by(&{!is_nil(&1.deleted_at), &1.name})
 
@@ -65,6 +90,7 @@ defmodule AndnativeAiWeb.Admin.MemoryMapLive do
     total_active_chunks = chunk_counts |> Map.values() |> Enum.sum()
 
     socket
+    |> assign(:collection_groups, collection_groups)
     |> assign(:groups, groups)
     |> assign(:chunk_counts, chunk_counts)
     |> assign(:total_active_chunks, total_active_chunks)
@@ -165,6 +191,47 @@ defmodule AndnativeAiWeb.Admin.MemoryMapLive do
           </div>
         </section>
 
+        <section
+          :for={collection_group <- @collection_groups}
+          id={"memory-collection-#{collection_group.collection.id}"}
+          class="space-y-2"
+        >
+          <div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-folder" class="size-4 text-base-content/45" />
+              <h2 class="text-base font-semibold">{collection_group.collection.name}</h2>
+              <span class="rounded border border-base-300 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-base-content/50">
+                {collection_group.collection.kind}
+              </span>
+              <span class="text-xs tabular-nums text-base-content/50">
+                {collection_group.active_count} active &middot; {collection_group.chunk_count} chunks
+              </span>
+            </div>
+            <p class="max-w-xl truncate text-xs text-base-content/50">
+              {collection_group.collection.description}
+            </p>
+          </div>
+
+          <div class="overflow-hidden rounded-lg border border-base-300 bg-base-100">
+            <div
+              :if={collection_group.sources == []}
+              class="px-5 py-8 text-sm text-base-content/60"
+            >
+              No documents in this collection yet.
+            </div>
+
+            <div :if={collection_group.sources != []} class="divide-y divide-base-300/70">
+              <.source_row
+                :for={source <- collection_group.sources}
+                source={source}
+                expanded_source_id={@expanded_source_id}
+                expanded_items={@expanded_items}
+                chunk_counts={@chunk_counts}
+              />
+            </div>
+          </div>
+        </section>
+
         <section :for={group <- @groups} id={"memory-group-#{group.key}"} class="space-y-2">
           <div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
             <div class="flex items-center gap-2">
@@ -197,109 +264,13 @@ defmodule AndnativeAiWeb.Admin.MemoryMapLive do
             </div>
 
             <div :if={group.sources != []} class="divide-y divide-base-300/70">
-              <div :for={source <- group.sources} id={"memory-source-#{source.id}"}>
-                <button
-                  type="button"
-                  phx-click="toggle-source"
-                  phx-value-id={source.id}
-                  aria-expanded={to_string(@expanded_source_id == source.id)}
-                  aria-controls={"memory-source-items-#{source.id}"}
-                  class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-base-200/60"
-                >
-                  <span class="min-w-0">
-                    <span class="flex flex-wrap items-baseline gap-x-2">
-                      <span class={[
-                        "text-sm font-medium",
-                        source.deleted_at &&
-                          "text-base-content/45 line-through decoration-base-content/30"
-                      ]}>
-                        {source.name}
-                      </span>
-                      <span class="truncate font-mono text-[11px] text-base-content/40">
-                        {source.source_id}
-                      </span>
-                    </span>
-                    <span class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/50">
-                      <span
-                        :if={is_nil(source.deleted_at)}
-                        class="inline-flex items-center gap-1.5 text-success"
-                      >
-                        <span class="size-1.5 rounded-full bg-success"></span> active in retrieval
-                      </span>
-                      <span :if={source.deleted_at} class="inline-flex items-center gap-1.5">
-                        <span class="size-1.5 rounded-full bg-base-content/25"></span>
-                        deleted &mdash; excluded from retrieval
-                      </span>
-                      <span :if={source.last_ingested_at} class="tabular-nums">
-                        ingested {Calendar.strftime(source.last_ingested_at, "%b %d, %H:%M UTC")}
-                      </span>
-                      <span
-                        :if={Source.ingest_bot_messages?(source)}
-                        class="rounded border border-base-300 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-base-content/50"
-                      >
-                        app posts on
-                      </span>
-                    </span>
-                  </span>
-
-                  <span class="flex items-center gap-3">
-                    <span class="text-sm font-semibold tabular-nums">
-                      {Map.get(@chunk_counts, source.id, 0)}
-                      <span class="text-xs font-normal text-base-content/50">chunks</span>
-                    </span>
-                    <.icon
-                      name={
-                        if @expanded_source_id == source.id,
-                          do: "hero-chevron-up",
-                          else: "hero-chevron-down"
-                      }
-                      class="size-4 text-base-content/30"
-                    />
-                  </span>
-                </button>
-
-                <div
-                  :if={@expanded_source_id == source.id}
-                  id={"memory-source-items-#{source.id}"}
-                  class="border-t border-base-300/70 bg-base-200/40 px-5 py-3"
-                >
-                  <p
-                    :if={@expanded_items == []}
-                    class="py-2 text-sm text-base-content/60"
-                  >
-                    No memory chunks for this source.
-                  </p>
-
-                  <ol :if={@expanded_items != []} class="space-y-2">
-                    <li
-                      :for={item <- @expanded_items}
-                      id={"memory-item-#{item.id}"}
-                      class="rounded border border-base-300 bg-base-100 px-4 py-3"
-                    >
-                      <p class={[
-                        "text-sm leading-6",
-                        (item.deleted_at && "text-base-content/40") || "text-base-content/80"
-                      ]}>
-                        {truncate(item.text, 220)}
-                      </p>
-                      <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-base-content/50">
-                        <span :if={item.deleted_at} class="font-medium">deleted</span>
-                        <span class="tabular-nums">retention: {item.retention_class}</span>
-                        <span class="tabular-nums">visibility: {item.visibility}</span>
-                        <.link
-                          :if={web_url(item)}
-                          href={web_url(item)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="link link-hover inline-flex items-center gap-1 font-medium"
-                        >
-                          <.icon name="hero-link" class="size-3" /> citation
-                        </.link>
-                      </div>
-                    </li>
-                  </ol>
-                </div>
-              </div>
+              <.source_row
+                :for={source <- group.sources}
+                source={source}
+                expanded_source_id={@expanded_source_id}
+                expanded_items={@expanded_items}
+                chunk_counts={@chunk_counts}
+              />
             </div>
           </div>
         </section>
@@ -324,6 +295,116 @@ defmodule AndnativeAiWeb.Admin.MemoryMapLive do
         </section>
       </div>
     </Layouts.app>
+    """
+  end
+
+  attr :source, :map, required: true
+  attr :expanded_source_id, :integer, default: nil
+  attr :expanded_items, :list, default: []
+  attr :chunk_counts, :map, required: true
+
+  defp source_row(assigns) do
+    ~H"""
+    <div id={"memory-source-#{@source.id}"}>
+      <button
+        type="button"
+        phx-click="toggle-source"
+        phx-value-id={@source.id}
+        aria-expanded={to_string(@expanded_source_id == @source.id)}
+        aria-controls={"memory-source-items-#{@source.id}"}
+        class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-base-200/60"
+      >
+        <span class="min-w-0">
+          <span class="flex flex-wrap items-baseline gap-x-2">
+            <span class={[
+              "text-sm font-medium",
+              @source.deleted_at &&
+                "text-base-content/45 line-through decoration-base-content/30"
+            ]}>
+              {@source.name}
+            </span>
+            <span class="truncate font-mono text-[11px] text-base-content/40">
+              {@source.source_id}
+            </span>
+          </span>
+          <span class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/50">
+            <span
+              :if={is_nil(@source.deleted_at)}
+              class="inline-flex items-center gap-1.5 text-success"
+            >
+              <span class="size-1.5 rounded-full bg-success"></span> active in retrieval
+            </span>
+            <span :if={@source.deleted_at} class="inline-flex items-center gap-1.5">
+              <span class="size-1.5 rounded-full bg-base-content/25"></span>
+              deleted &mdash; excluded from retrieval
+            </span>
+            <span :if={@source.last_ingested_at} class="tabular-nums">
+              ingested {Calendar.strftime(@source.last_ingested_at, "%b %d, %H:%M UTC")}
+            </span>
+            <span
+              :if={Source.ingest_bot_messages?(@source)}
+              class="rounded border border-base-300 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-base-content/50"
+            >
+              app posts on
+            </span>
+          </span>
+        </span>
+
+        <span class="flex items-center gap-3">
+          <span class="text-sm font-semibold tabular-nums">
+            {Map.get(@chunk_counts, @source.id, 0)}
+            <span class="text-xs font-normal text-base-content/50">chunks</span>
+          </span>
+          <.icon
+            name={
+              if @expanded_source_id == @source.id,
+                do: "hero-chevron-up",
+                else: "hero-chevron-down"
+            }
+            class="size-4 text-base-content/30"
+          />
+        </span>
+      </button>
+
+      <div
+        :if={@expanded_source_id == @source.id}
+        id={"memory-source-items-#{@source.id}"}
+        class="border-t border-base-300/70 bg-base-200/40 px-5 py-3"
+      >
+        <p :if={@expanded_items == []} class="py-2 text-sm text-base-content/60">
+          No memory chunks for this source.
+        </p>
+
+        <ol :if={@expanded_items != []} class="space-y-2">
+          <li
+            :for={item <- @expanded_items}
+            id={"memory-item-#{item.id}"}
+            class="rounded border border-base-300 bg-base-100 px-4 py-3"
+          >
+            <p class={[
+              "text-sm leading-6",
+              (item.deleted_at && "text-base-content/40") || "text-base-content/80"
+            ]}>
+              {truncate(item.text, 220)}
+            </p>
+            <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-base-content/50">
+              <span :if={item.deleted_at} class="font-medium">deleted</span>
+              <span class="tabular-nums">retention: {item.retention_class}</span>
+              <span class="tabular-nums">visibility: {item.visibility}</span>
+              <.link
+                :if={web_url(item)}
+                href={web_url(item)}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="link link-hover inline-flex items-center gap-1 font-medium"
+              >
+                <.icon name="hero-link" class="size-3" /> citation
+              </.link>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
     """
   end
 

@@ -2,6 +2,8 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
   use AndnativeAiWeb, :live_view
 
   alias AndnativeAi.Memory
+  alias AndnativeAi.Memory.Collection
+  alias AndnativeAi.Sources.CollectionClassifier
   alias AndnativeAi.Sources.DocumentIngestion
 
   @impl true
@@ -13,6 +15,10 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
       |> assign(:page_title, "Sources")
       |> assign(:tenant, tenant)
       |> assign(:form, to_form(%{}, as: :upload))
+      |> assign(:staging_dir, nil)
+      |> assign(:staged_files, [])
+      |> assign(:suggested_name, nil)
+      |> assign(:collection_form, nil)
       |> reload_sources()
       |> allow_upload(:document,
         accept: ~w(.md .txt),
@@ -20,12 +26,126 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
         max_file_size: 2_000_000,
         auto_upload: false
       )
+      |> allow_upload(:collection_docs,
+        accept: ~w(.md .txt .zip),
+        max_entries: 40,
+        max_file_size: 20_000_000,
+        auto_upload: true,
+        progress: &handle_collection_progress/3
+      )
 
     {:ok, socket}
   end
 
   @impl true
+  def terminate(_reason, socket) do
+    if socket.assigns[:staging_dir] do
+      DocumentIngestion.discard_staged(socket.assigns.staging_dir)
+    end
+
+    :ok
+  end
+
+  @impl true
   def handle_event("validate", _params, socket), do: {:noreply, socket}
+
+  def handle_event("validate-collection", _params, socket), do: {:noreply, socket}
+
+  def handle_event("stage-collection", _params, socket) do
+    staged = socket.assigns.staged_files
+
+    if staged == [] do
+      {:noreply,
+       put_flash(socket, :error, "No usable documents found. Upload .md/.txt files or a .zip.")}
+    else
+      proposal = CollectionClassifier.propose(staged, socket.assigns.suggested_name)
+
+      {:noreply,
+       assign(
+         socket,
+         :collection_form,
+         to_form(
+           %{
+             "name" => proposal.name,
+             "kind" => proposal.kind,
+             "description" => proposal.description
+           },
+           as: :collection
+         )
+       )}
+    end
+  end
+
+  def handle_event("confirm-collection", %{"collection" => params}, socket) do
+    actor = (socket.assigns.current_user && socket.assigns.current_user.email) || "Admin"
+
+    case Memory.create_collection(socket.assigns.tenant.id, params, actor: actor) do
+      {:ok, collection} ->
+        result =
+          DocumentIngestion.ingest_staged(
+            socket.assigns.tenant.id,
+            socket.assigns.staged_files,
+            collection
+          )
+
+        DocumentIngestion.discard_staged(socket.assigns.staging_dir)
+
+        message =
+          case result do
+            %{succeeded: ok, failed: []} ->
+              "Collection \"#{collection.name}\" created with #{ok} documents."
+
+            %{succeeded: ok, failed: failed} ->
+              "Collection \"#{collection.name}\" created with #{ok} documents; skipped: #{Enum.join(failed, ", ")}."
+          end
+
+        {:noreply,
+         socket
+         |> assign(:staging_dir, nil)
+         |> assign(:staged_files, [])
+         |> assign(:suggested_name, nil)
+         |> assign(:collection_form, nil)
+         |> put_flash(:info, message)
+         |> reload_sources()}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :collection_form, to_form(changeset, as: :collection))}
+    end
+  end
+
+  def handle_event("discard-collection", _params, socket) do
+    if socket.assigns.staging_dir do
+      DocumentIngestion.discard_staged(socket.assigns.staging_dir)
+    end
+
+    {:noreply,
+     socket
+     |> assign(:staging_dir, nil)
+     |> assign(:staged_files, [])
+     |> assign(:suggested_name, nil)
+     |> assign(:collection_form, nil)}
+  end
+
+  def handle_event("delete-collection", %{"id" => id}, socket) do
+    case Integer.parse(to_string(id)) do
+      {collection_id, ""} ->
+        actor = (socket.assigns.current_user && socket.assigns.current_user.email) || "Admin"
+
+        {:ok, %{collection: collection, deleted_sources_count: count}} =
+          Memory.soft_delete_collection(socket.assigns.tenant.id, collection_id, actor: actor)
+
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "Collection \"#{collection.name}\" deleted; #{count} sources left retrieval."
+         )
+         |> reload_sources()}
+
+      _invalid ->
+        {:noreply, socket}
+    end
+  end
 
   def handle_event("save", _params, socket) do
     results =
@@ -102,13 +222,68 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
   end
 
   defp reload_sources(socket) do
-    all_sources = DocumentIngestion.list_uploaded_sources(socket.assigns.tenant.id)
+    tenant_id = socket.assigns.tenant.id
+    all_sources = DocumentIngestion.list_uploaded_sources(tenant_id)
     document_sources = Enum.filter(all_sources, &(&1.source_type == "document"))
     slack_sources = Enum.filter(all_sources, &(&1.source_type == "slack_channel"))
+
+    collections = Memory.list_collections(tenant_id)
+    counts_by_collection = Enum.frequencies_by(document_sources, & &1.collection_id)
 
     socket
     |> assign(:sources, document_sources)
     |> assign(:slack_sources, slack_sources)
+    |> assign(:collections, collections)
+    |> assign(:collection_counts, counts_by_collection)
+  end
+
+  # Stages each collection upload as soon as it finishes transferring, so
+  # the review step never has to consume many entries at once.
+  defp handle_collection_progress(:collection_docs, entry, socket) do
+    if entry.done? do
+      staging_dir =
+        socket.assigns.staging_dir ||
+          Path.join(System.tmp_dir!(), "andnative-staging-#{System.unique_integer([:positive])}")
+
+      result =
+        consume_uploaded_entry(socket, entry, fn %{path: path} ->
+          {:ok,
+           DocumentIngestion.stage_upload(staging_dir, %{
+             path: path,
+             filename: entry.client_name
+           })}
+        end)
+
+      socket =
+        case result do
+          {:ok, files} ->
+            socket
+            |> assign(:staging_dir, staging_dir)
+            |> update(:staged_files, &(&1 ++ files))
+            |> update(:suggested_name, &(&1 || suggestion_from(entry.client_name)))
+
+          _error ->
+            socket
+        end
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp suggestion_from(client_name) do
+    case Path.extname(client_name) do
+      ".zip" ->
+        client_name
+        |> Path.basename(".zip")
+        |> String.replace(~r/[-_]+/, " ")
+        |> String.trim()
+        |> :string.titlecase()
+
+      _other ->
+        nil
+    end
   end
 
   @impl true
@@ -120,6 +295,152 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
           <div>
             <p class="text-sm font-medium text-base-content/60">{@tenant.name}</p>
             <h1 class="text-3xl font-semibold tracking-normal text-base-content">Sources</h1>
+          </div>
+        </section>
+
+        <section id="collection-builder" class="rounded-lg border border-base-300 bg-base-100 p-5">
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 class="text-base font-semibold">New collection</h2>
+            <p class="text-xs text-base-content/50">
+              A collection tells the agent what a corpus <span class="italic">is</span>
+              — answers cite it, retrieval can scope to it, deletion removes it whole.
+            </p>
+          </div>
+
+          <.form
+            :if={is_nil(@collection_form)}
+            for={@form}
+            id="collection-upload-form"
+            phx-change="validate-collection"
+            phx-submit="stage-collection"
+            class="mt-4 space-y-4"
+          >
+            <div class="rounded-lg border border-dashed border-base-300 bg-base-200/60 p-5">
+              <.live_file_input
+                upload={@uploads.collection_docs}
+                class="file-input file-input-bordered w-full"
+              />
+              <p class="mt-2 text-xs text-base-content/50">
+                Select multiple .md/.txt files, or upload a whole folder as a .zip —
+                the folder name becomes the proposed collection name.
+              </p>
+
+              <div class="mt-4 space-y-1">
+                <div
+                  :for={entry <- @uploads.collection_docs.entries}
+                  id={"collection-entry-#{entry.ref}"}
+                  class="flex items-center justify-between gap-3 text-sm"
+                >
+                  <span class="truncate">{entry.client_name}</span>
+                  <span class="tabular-nums text-base-content/50">{entry.progress}%</span>
+                </div>
+              </div>
+
+              <p
+                :if={@staged_files != []}
+                id="collection-staged-count"
+                class="mt-3 text-xs text-base-content/60"
+              >
+                {length(@staged_files)} documents staged and ready for review.
+              </p>
+            </div>
+
+            <div class="flex items-center justify-end">
+              <button id="collection-stage-submit" class="btn btn-primary">
+                <.icon name="hero-folder-plus" class="size-4" /> Review collection
+              </button>
+            </div>
+          </.form>
+
+          <div :if={@collection_form} id="collection-proposal" class="mt-4 space-y-4">
+            <div class="rounded-lg border border-base-300 bg-base-200/50 px-4 py-3">
+              <p class="text-xs font-semibold uppercase tracking-wider text-base-content/45">
+                Proposed — confirm or edit before anything enters memory
+              </p>
+              <p class="mt-1.5 text-sm text-base-content/70">
+                {length(@staged_files)} documents staged: {@staged_files
+                |> Enum.take(6)
+                |> Enum.map_join(", ", & &1.filename)}<span :if={length(@staged_files) > 6}> and {length(@staged_files) - 6} more</span>.
+              </p>
+            </div>
+
+            <.form
+              for={@collection_form}
+              id="collection-confirm-form"
+              phx-submit="confirm-collection"
+              class="space-y-4"
+            >
+              <div class="grid gap-4 sm:grid-cols-2">
+                <.input field={@collection_form[:name]} type="text" label="Collection name" />
+                <.input
+                  field={@collection_form[:kind]}
+                  type="select"
+                  label="Kind"
+                  options={Collection.kinds() -- ["conversation"]}
+                />
+              </div>
+              <.input
+                field={@collection_form[:description]}
+                type="textarea"
+                label="What is this corpus? (used as retrieval context)"
+              />
+
+              <div class="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  id="collection-discard"
+                  phx-click="discard-collection"
+                  class="btn btn-ghost"
+                >
+                  Discard
+                </button>
+                <button id="collection-confirm-submit" class="btn btn-primary">
+                  <.icon name="hero-check" class="size-4" /> Confirm &amp; ingest
+                </button>
+              </div>
+            </.form>
+          </div>
+        </section>
+
+        <section
+          :if={@collections != []}
+          id="collections-list"
+          class="rounded-lg border border-base-300 bg-base-100"
+        >
+          <div class="flex items-center justify-between border-b border-base-300 px-5 py-4">
+            <h2 class="text-base font-semibold">Collections</h2>
+            <span class="text-xs tabular-nums text-base-content/50">{length(@collections)}</span>
+          </div>
+          <div class="divide-y divide-base-300/70">
+            <div
+              :for={collection <- @collections}
+              id={"collection-#{collection.id}"}
+              class="flex items-center justify-between gap-4 px-5 py-3"
+            >
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-baseline gap-2">
+                  <p class="truncate text-sm font-medium">{collection.name}</p>
+                  <span class="rounded border border-base-300 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-base-content/50">
+                    {collection.kind}
+                  </span>
+                  <span class="text-xs tabular-nums text-base-content/50">
+                    {Map.get(@collection_counts, collection.id, 0)} documents
+                  </span>
+                </div>
+                <p class="mt-1 line-clamp-2 text-xs text-base-content/55">
+                  {collection.description}
+                </p>
+              </div>
+              <button
+                id={"delete-collection-#{collection.id}"}
+                class="btn btn-ghost btn-sm text-error"
+                phx-click="delete-collection"
+                phx-value-id={collection.id}
+                data-confirm="Delete this collection and remove all its documents from memory?"
+              >
+                <.icon name="hero-trash" class="size-4" />
+              </button>
+            </div>
           </div>
         </section>
 

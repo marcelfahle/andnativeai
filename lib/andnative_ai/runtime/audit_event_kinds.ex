@@ -29,6 +29,18 @@ defmodule AndnativeAi.Runtime.AuditEventKinds do
       tone: :warning,
       category: :governance
     },
+    "collection_created" => %{
+      label: "Collection confirmed",
+      icon: "hero-folder-plus",
+      tone: :ready,
+      category: :governance
+    },
+    "collection_deleted" => %{
+      label: "Collection deleted",
+      icon: "hero-folder-minus",
+      tone: :warning,
+      category: :governance
+    },
     "slack_mention_received" => %{
       label: "Slack mention",
       icon: "hero-chat-bubble-left-right",

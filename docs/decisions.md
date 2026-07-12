@@ -207,3 +207,25 @@ Why:
   explicit admin decision.
 - The policy change itself is governance evidence and belongs on the audit
   timeline.
+
+## DEC-015: Collections Are The Corpus-Context Primitive
+
+Documents can belong to a `collection` (name, kind, required description).
+The collection context is prepended to every chunk at ingest
+(`[{collection} · {file}] chunk`), search can scope to a collection, the
+memory map groups by collection, and deleting a collection soft-deletes every
+member source at once. Collection creation is propose-and-confirm: a
+classifier (LLM when configured, filename heuristics otherwise) suggests
+name/kind/description from the uploaded batch, and a human confirms — the
+confirmation and deletion are governance audit events (`collection_created`,
+`collection_deleted`).
+
+Why:
+
+- Retrieval and answers need to know what a corpus IS ("the employee
+  handbook"), not just its file names; container + description is the
+  primitive every mature knowledge product converges on.
+- Context-in-chunk-text follows the existing Slack distiller precedent and
+  needs no schema change to items.
+- Machine suggests, human decides — corpus classification is a governance
+  decision and belongs on the timeline.
