@@ -14,6 +14,9 @@ docker compose up --build
 
 Then open http://localhost:4000.
 
+Day-to-day commands (local dev, demo resets, live-appliance operations) are
+`just` recipes — run `just --list` or read the `justfile`.
+
 The local control-panel container uses the Docker `dev` target and runs the
 Mix-based dev entrypoint on startup. The Postgres service uses the
 `pgvector/pgvector:pg16` image and the first migration enables the `vector`
