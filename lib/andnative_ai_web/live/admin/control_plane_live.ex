@@ -104,21 +104,32 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
   end
 
   def handle_event("approve-action", %{"id" => id}, socket) do
-    with {action_id, ""} <- Integer.parse(to_string(id)) do
-      approver = socket.assigns.current_user.email
-      {:ok, _action} = Actions.approve_action(socket.assigns.tenant.id, action_id, approver)
-    end
-
-    {:noreply, socket |> reload_snapshot() |> put_flash(:info, "Action approved and queued.")}
+    {:noreply,
+     decide_action(socket, id, &Actions.approve_action/3, "Action approved and queued.")}
   end
 
   def handle_event("deny-action", %{"id" => id}, socket) do
-    with {action_id, ""} <- Integer.parse(to_string(id)) do
-      approver = socket.assigns.current_user.email
-      {:ok, _action} = Actions.deny_action(socket.assigns.tenant.id, action_id, approver)
-    end
+    {:noreply, decide_action(socket, id, &Actions.deny_action/3, "Action denied.")}
+  end
 
-    {:noreply, socket |> reload_snapshot() |> put_flash(:info, "Action denied.")}
+  defp decide_action(socket, id, decide, success_message) do
+    approver = socket.assigns.current_user.email
+
+    result =
+      case Integer.parse(to_string(id)) do
+        {action_id, ""} -> decide.(socket.assigns.tenant.id, action_id, approver)
+        _invalid -> {:error, :invalid_id}
+      end
+
+    case result do
+      {:ok, _action} ->
+        socket |> reload_snapshot() |> put_flash(:info, success_message)
+
+      {:error, _reason} ->
+        socket
+        |> reload_snapshot()
+        |> put_flash(:error, "That action can no longer be decided — it may already be resolved.")
+    end
   end
 
   @impl true

@@ -14,15 +14,22 @@ defmodule AndnativeAi.Actions.Worker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"action_id" => action_id}}) do
-    action = AndnativeAi.Repo.get!(AndnativeAi.Actions.Action, action_id)
+    case AndnativeAi.Repo.get(AndnativeAi.Actions.Action, action_id) do
+      nil ->
+        # The action row is gone (tenant deleted, stale args): nothing to do.
+        :ok
 
-    case action.status do
-      status when status in ["queued", "running"] -> execute(action)
+      %{status: status} = action when status in ["queued", "running"] ->
+        execute(action)
+
       # Approvals or manual intervention changed the state; nothing to do.
-      _other -> :ok
+      _other ->
+        :ok
     end
   end
 
+  # Any failure — error tuple or raise — cancels instead of retrying: a
+  # retry would silently re-spend provider budget without a human deciding.
   defp execute(action) do
     action = Actions.mark_running(action)
 
@@ -33,13 +40,16 @@ defmodule AndnativeAi.Actions.Worker do
       Actions.mark_completed(action, result, result_path)
       :ok
     else
-      {:error, reason} ->
-        Actions.mark_failed(action, reason)
-        notify_failure(action)
-        # The failure is recorded and reported; retrying automatically would
-        # re-spend provider budget without a human deciding to.
-        {:cancel, reason}
+      {:error, reason} -> fail(action, reason)
     end
+  rescue
+    exception -> fail(action, exception)
+  end
+
+  defp fail(action, reason) do
+    Actions.mark_failed(action, reason)
+    notify_failure(action)
+    {:cancel, reason}
   end
 
   defp fetch_handler(kind) do

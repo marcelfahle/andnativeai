@@ -21,10 +21,19 @@ defmodule AndnativeAi.Actions do
     requires_approval? = ActionKinds.requires_approval?(kind)
     status = if requires_approval?, do: "awaiting_approval", else: "queued"
 
+    # Action row and job insert commit together: no queued action without a
+    # job, no job without its action.
     result =
-      %Action{tenant_id: tenant_id}
-      |> Action.changeset(Map.merge(attrs, %{status: status}))
-      |> Repo.insert()
+      Repo.transaction(fn ->
+        action =
+          %Action{tenant_id: tenant_id}
+          |> Action.changeset(Map.merge(attrs, %{status: status}))
+          |> Repo.insert!()
+
+        unless requires_approval?, do: enqueue(action)
+
+        action
+      end)
 
     with {:ok, action} <- result do
       record_action_event(action, "action_requested", %{
@@ -32,51 +41,69 @@ defmodule AndnativeAi.Actions do
         summary: action_summary(action, requested_summary(action, requires_approval?))
       })
 
-      unless requires_approval?, do: enqueue(action)
-
       {:ok, action}
     end
   end
 
-  @doc "Approves a parked action and enqueues it. Audited."
+  @doc """
+  Approves a parked action and enqueues it. Audited. Only actions still in
+  `awaiting_approval` can be approved; anything else returns
+  `{:error, :invalid_status}`.
+  """
   def approve_action(tenant_id, action_id, approver) do
-    action = get_action!(tenant_id, action_id)
+    case get_action!(tenant_id, action_id) do
+      %Action{status: "awaiting_approval"} = action ->
+        {:ok, action} =
+          Repo.transaction(fn ->
+            action =
+              action
+              |> Action.changeset(%{
+                status: "queued",
+                approved_by: approver,
+                approved_at: utc_now()
+              })
+              |> Repo.update!()
 
-    {:ok, action} =
-      action
-      |> Action.changeset(%{
-        status: "queued",
-        approved_by: approver,
-        approved_at: utc_now()
-      })
-      |> Repo.update()
+            enqueue(action)
+            action
+          end)
 
-    record_action_event(action, "action_approved", %{
-      actor: approver,
-      status: "approved",
-      summary: action_summary(action, "was approved by #{approver}.")
-    })
+        record_action_event(action, "action_approved", %{
+          actor: approver,
+          status: "approved",
+          summary: action_summary(action, "was approved by #{approver}.")
+        })
 
-    enqueue(action)
-    {:ok, action}
+        {:ok, action}
+
+      _other_status ->
+        {:error, :invalid_status}
+    end
   end
 
-  @doc "Denies a parked action. Audited; nothing runs."
+  @doc """
+  Denies a parked action. Audited; nothing runs. Only actions still in
+  `awaiting_approval` can be denied.
+  """
   def deny_action(tenant_id, action_id, approver) do
-    action = get_action!(tenant_id, action_id)
+    case get_action!(tenant_id, action_id) do
+      %Action{status: "awaiting_approval"} = action ->
+        {:ok, action} =
+          action
+          |> Action.changeset(%{status: "denied", approved_by: approver, approved_at: utc_now()})
+          |> Repo.update()
 
-    {:ok, action} =
-      action
-      |> Action.changeset(%{status: "denied", approved_by: approver, approved_at: utc_now()})
-      |> Repo.update()
+        record_action_event(action, "action_denied", %{
+          actor: approver,
+          status: "denied",
+          summary: action_summary(action, "was denied by #{approver}.")
+        })
 
-    record_action_event(action, "action_denied", %{
-      actor: approver,
-      status: "denied",
-      summary: action_summary(action, "was denied by #{approver}.")
-    })
+        {:ok, action}
 
-    {:ok, action}
+      _other_status ->
+        {:error, :invalid_status}
+    end
   end
 
   def get_action!(tenant_id, id), do: Repo.get_by!(Action, id: id, tenant_id: tenant_id)

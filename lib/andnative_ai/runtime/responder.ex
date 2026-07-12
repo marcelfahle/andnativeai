@@ -43,32 +43,43 @@ defmodule AndnativeAi.Runtime.Responder do
   end
 
   defp dispatch_action(tenant_id, agent, slack_event, request_id, kind, argument, opts) do
-    {:ok, action} =
-      Actions.request_action(tenant_id, %{
-        kind: kind,
-        agent_id: agent.id,
-        input_summary: String.slice(argument, 0, 250),
-        input: %{"argument" => argument},
-        request_id: request_id,
-        slack_channel_id: slack_event["channel"],
-        slack_thread_ts: slack_event["thread_ts"] || slack_event["ts"]
-      })
+    case Actions.request_action(tenant_id, %{
+           kind: kind,
+           agent_id: agent.id,
+           input_summary: String.slice(argument, 0, 250),
+           input: %{"argument" => argument},
+           request_id: request_id,
+           slack_channel_id: slack_event["channel"],
+           slack_thread_ts: slack_event["thread_ts"] || slack_event["ts"]
+         }) do
+      {:ok, action} ->
+        ack =
+          case action.status do
+            "awaiting_approval" ->
+              "Got it — this action needs a human approval first. It's waiting on the control plane."
 
-    ack =
-      case action.status do
-        "awaiting_approval" ->
-          "Got it — this action needs a human approval first. It's waiting on the control plane."
-
-        _queued ->
-          case ActionKinds.fetch(kind) do
-            {:ok, %{ack: ack}} -> ack
-            :error -> "On it — I'll post the result in this thread."
+            _queued ->
+              case ActionKinds.fetch(kind) do
+                {:ok, %{ack: ack}} -> ack
+                :error -> "On it — I'll post the result in this thread."
+              end
           end
-      end
 
-    maybe_post_response(slack_event, ack, opts)
+        maybe_post_response(slack_event, ack, opts)
 
-    {:ok, %{action: action, request_id: request_id}}
+        {:ok, %{action: action, request_id: request_id}}
+
+      {:error, reason} ->
+        record_runtime_error(tenant_id, agent, request_id, reason)
+
+        maybe_post_response(
+          slack_event,
+          "I couldn't start that action — the error is on the audit timeline.",
+          opts
+        )
+
+        {:error, reason}
+    end
   end
 
   defp mention_or_owned_thread?(%{"type" => "app_mention"}, _opts), do: true

@@ -250,9 +250,21 @@ defmodule AndnativeAi.ActionsTest do
     tenant: tenant,
     agent: agent
   } do
+    Application.put_env(:andnative_ai, :extra_action_kinds, %{
+      "gated" => %{
+        prefix: "gated:",
+        handler: AndnativeAi.Actions.Handlers.Echo,
+        requires_approval: true,
+        label: "Gated (test)",
+        ack: "Queued for approval."
+      }
+    })
+
+    on_exit(fn -> Application.delete_env(:andnative_ai, :extra_action_kinds) end)
+
     {:ok, action} =
       Actions.request_action(tenant.id, %{
-        kind: "echo",
+        kind: "gated",
         agent_id: agent.id,
         input_summary: "already denied",
         request_id: "req-noop-1"
@@ -262,6 +274,13 @@ defmodule AndnativeAi.ActionsTest do
 
     assert :ok = perform_job(Worker, %{"action_id" => action.id})
     assert Actions.get_action!(tenant.id, action.id).status == "denied"
+
+    # Approving or denying again is rejected rather than double-run.
+    assert {:error, :invalid_status} =
+             Actions.approve_action(tenant.id, action.id, "marcel@example.com")
+
+    # Vanished rows are also a clean no-op.
+    assert :ok = perform_job(Worker, %{"action_id" => -1})
   end
 
   defp perform_job(worker, args) do
