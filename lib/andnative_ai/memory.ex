@@ -62,7 +62,11 @@ defmodule AndnativeAi.Memory do
           select: source.id
       )
 
-    Enum.each(source_ids, &soft_delete_source(tenant_id, &1))
+    # A failed source delete must stop the operation rather than leave a
+    # partially deleted corpus behind.
+    Enum.each(source_ids, fn source_id ->
+      {:ok, _result} = soft_delete_source(tenant_id, source_id)
+    end)
 
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 

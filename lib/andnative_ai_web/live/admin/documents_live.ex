@@ -245,18 +245,23 @@ defmodule AndnativeAiWeb.Admin.DocumentsLive do
         socket.assigns.staging_dir ||
           Path.join(System.tmp_dir!(), "andnative-staging-#{System.unique_integer([:positive])}")
 
-      result =
+      # The callback wraps the stage result in {:ok, _} because that is the
+      # consume contract; consume_uploaded_entry unwraps exactly that layer
+      # and hands back stage_upload's own {:ok, files} | {:error, reason}.
+      stage_result =
         consume_uploaded_entry(socket, entry, fn %{path: path} ->
-          {:ok,
-           DocumentIngestion.stage_upload(staging_dir, %{
-             path: path,
-             filename: entry.client_name
-           })}
+          stage_result =
+            DocumentIngestion.stage_upload(staging_dir, %{
+              path: path,
+              filename: entry.client_name
+            })
+
+          {:ok, stage_result}
         end)
 
       socket =
-        case result do
-          {:ok, files} ->
+        case stage_result do
+          {:ok, files} when is_list(files) ->
             socket
             |> assign(:staging_dir, staging_dir)
             |> update(:staged_files, &(&1 ++ files))

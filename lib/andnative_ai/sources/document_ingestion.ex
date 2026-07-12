@@ -69,7 +69,10 @@ defmodule AndnativeAi.Sources.DocumentIngestion do
     end
   end
 
-  @doc "Ingests every staged file into the given collection, then cleans up."
+  @doc """
+  Ingests every staged file into the given collection. Callers clean the
+  staging directory up afterwards with `discard_staged/1`.
+  """
   def ingest_staged(tenant_id, staged_files, collection) do
     results =
       Enum.map(staged_files, fn staged ->
@@ -87,39 +90,66 @@ defmodule AndnativeAi.Sources.DocumentIngestion do
 
   def discard_staged(staging_dir), do: File.rm_rf(staging_dir)
 
+  # Zip entries are validated by name BEFORE extraction (zip-slip defense):
+  # only relative paths without traversal or hidden segments and with an
+  # allowed extension are extracted, via the :file_list allow-list.
   defp expand_zip(staging_dir, zip_path) do
     extract_dir = Path.join(staging_dir, "zip-#{System.unique_integer([:positive])}")
     File.mkdir_p!(extract_dir)
+    zip_charlist = String.to_charlist(zip_path)
 
-    case :zip.unzip(String.to_charlist(zip_path), cwd: String.to_charlist(extract_dir)) do
-      {:ok, entries} ->
-        staged =
-          entries
-          |> Enum.map(&to_string/1)
-          |> Enum.filter(&safe_zip_entry?(&1, extract_dir))
-          |> Enum.map(&staged_entry(&1, Path.basename(&1)))
+    with {:ok, entries} <- :zip.list_dir(zip_charlist),
+         safe_names when safe_names != [] <- safe_entry_names(entries),
+         {:ok, _extracted} <-
+           :zip.unzip(zip_charlist,
+             cwd: String.to_charlist(extract_dir),
+             file_list: Enum.map(safe_names, &String.to_charlist/1)
+           ) do
+      staged =
+        safe_names
+        |> Enum.map(&Path.join(extract_dir, &1))
+        |> Enum.filter(&File.regular?/1)
+        |> Enum.map(&staged_entry(&1, Path.basename(&1)))
 
-        if staged == [], do: {:error, :empty_archive}, else: {:ok, staged}
-
-      {:error, reason} ->
-        {:error, {:invalid_zip, reason}}
+      if staged == [], do: {:error, :empty_archive}, else: {:ok, staged}
+    else
+      [] -> {:error, :empty_archive}
+      {:error, reason} -> {:error, {:invalid_zip, reason}}
     end
   end
 
-  defp safe_zip_entry?(path, extract_dir) do
-    inside? = String.starts_with?(Path.expand(path), Path.expand(extract_dir))
-    hidden? = path |> Path.basename() |> String.starts_with?(".")
-    inside? and not hidden? and Path.extname(path) in @allowed_extensions and File.regular?(path)
+  defp safe_entry_names(entries) do
+    entries
+    |> Enum.flat_map(fn
+      {:zip_file, name, _info, _comment, _offset, _size} -> [to_string(name)]
+      _other -> []
+    end)
+    |> Enum.filter(&safe_zip_name?/1)
+  end
+
+  defp safe_zip_name?(name) do
+    segments = Path.split(name)
+
+    Path.type(name) == :relative and
+      Path.extname(name) in @allowed_extensions and
+      Enum.all?(segments, fn segment ->
+        segment != ".." and not String.starts_with?(segment, ".")
+      end)
   end
 
   defp staged_entry(path, filename) do
-    preview =
-      case File.read(path) do
-        {:ok, text} -> String.slice(text, 0, @preview_chars)
-        _unreadable -> ""
-      end
+    %{path: path, filename: filename, preview: preview(path)}
+  end
 
-    %{path: path, filename: filename, preview: preview}
+  # Preview only reads the leading bytes and never crashes on invalid UTF-8.
+  defp preview(path) do
+    case File.open(path, [:read, :binary], &IO.binread(&1, @preview_chars * 4)) do
+      {:ok, data} when is_binary(data) ->
+        if String.valid?(data), do: String.slice(data, 0, @preview_chars), else: ""
+
+      _unreadable ->
+        ""
+    end
   end
 
   def delete_source(tenant_id, source_id), do: Service.delete_source(tenant_id, source_id)

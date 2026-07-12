@@ -47,9 +47,11 @@ defmodule AndnativeAiWeb.Admin.MemoryMapLive do
     chunk_counts = Memory.active_item_counts_by_source(tenant_id)
     collections = Memory.list_collections(tenant_id)
 
+    collection_ids = MapSet.new(collections, & &1.id)
+
     {collected_sources, loose_sources} =
       Enum.split_with(sources, fn source ->
-        source.collection_id && Enum.any?(collections, &(&1.id == source.collection_id))
+        source.collection_id && MapSet.member?(collection_ids, source.collection_id)
       end)
 
     sources_by_collection = Enum.group_by(collected_sources, & &1.collection_id)

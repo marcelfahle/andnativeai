@@ -155,4 +155,40 @@ defmodule AndnativeAiWeb.Admin.CollectionFlowTest do
     assert [%{filename: "handbook.md", preview: preview}] = staged
     assert preview =~ "Approvals need a manager"
   end
+
+  test "zip entries with traversal or hidden segments are never extracted" do
+    staging_dir =
+      Path.join(System.tmp_dir!(), "andnative-zipslip-#{System.unique_integer([:positive])}")
+
+    zip_path =
+      Path.join(System.tmp_dir!(), "andnative-evil-#{System.unique_integer([:positive])}.zip")
+
+    escape_target =
+      Path.join(System.tmp_dir!(), "andnative-escaped-#{System.unique_integer([:positive])}.md")
+
+    {:ok, _} =
+      :zip.create(
+        String.to_charlist(zip_path),
+        [
+          {String.to_charlist("../#{Path.basename(escape_target)}"), "escaped"},
+          {~c".hidden/sneaky.md", "hidden dir"},
+          {~c"ok.md", "# Fine\n\nSafe entry."}
+        ]
+      )
+
+    on_exit(fn ->
+      File.rm_rf(staging_dir)
+      File.rm(zip_path)
+      File.rm(escape_target)
+    end)
+
+    {:ok, staged} =
+      DocumentIngestion.stage_upload(staging_dir, %{path: zip_path, filename: "evil.zip"})
+
+    assert [%{filename: "ok.md"}] = staged
+    refute File.exists?(escape_target)
+
+    staged_paths = staging_dir |> Path.join("**") |> Path.wildcard()
+    refute Enum.any?(staged_paths, &String.contains?(&1, "sneaky"))
+  end
 end
