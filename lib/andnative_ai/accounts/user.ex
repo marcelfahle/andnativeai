@@ -3,6 +3,11 @@ defmodule AndnativeAi.Accounts.User do
 
   import Ecto.Changeset
 
+  # Two-level model per the provisioning plan: "admin" is a customer
+  # appliance admin; "superadmin" is platform staff (fleet operations,
+  # model policy). Customers can never grant superadmin from the UI.
+  @roles ~w(admin superadmin)
+
   @derive {Inspect, except: [:password]}
   schema "users" do
     # Stored as citext in Postgres, so email comparison/uniqueness is
@@ -12,8 +17,26 @@ defmodule AndnativeAi.Accounts.User do
     field :current_password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
     field :confirmed_at, :utc_datetime
+    field :role, :string, default: "admin"
 
     timestamps(type: :utc_datetime)
+  end
+
+  def roles, do: @roles
+
+  def superadmin?(%__MODULE__{role: "superadmin"}), do: true
+  def superadmin?(_user), do: false
+
+  @doc """
+  A changeset for changing a user's role. Deliberately separate from every
+  other changeset so role can only change through an explicit, audited path.
+  """
+  def role_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:role])
+    |> validate_required([:role])
+    |> validate_inclusion(:role, @roles)
+    |> check_constraint(:role, name: :users_role_must_be_known)
   end
 
   @doc """

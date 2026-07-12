@@ -76,12 +76,30 @@ defmodule AndnativeAiWeb.UserAuth do
   end
 
   @doc """
+  Used for routes that only platform staff may reach. Assumes
+  `require_authenticated_user` ran earlier in the pipeline.
+  """
+  def require_superadmin_user(conn, _opts) do
+    if AndnativeAi.Accounts.User.superadmin?(conn.assigns[:current_user]) do
+      conn
+    else
+      conn
+      |> put_flash(:error, "You do not have access to that page.")
+      |> redirect(to: signed_in_path(conn))
+      |> halt()
+    end
+  end
+
+  @doc """
   Handles mounting the current user into LiveViews.
 
     * `:mount_current_user` - assigns `current_user` from the session.
     * `:require_authenticated` - assigns `current_user` and redirects to the
       login page when no authenticated user is present. Re-runs on every
       socket connect/reconnect, so auth survives reconnects.
+    * `:require_superadmin` - like `:require_authenticated`, but also sends
+      non-superadmins back to the control plane. Platform-staff surfaces
+      (fleet operations, model policy) mount through this.
     * `:redirect_if_user_is_authenticated` - redirects already-authenticated
       users away from the login page.
   """
@@ -101,6 +119,25 @@ defmodule AndnativeAiWeb.UserAuth do
         |> Phoenix.LiveView.redirect(to: ~p"/login")
 
       {:halt, socket}
+    end
+  end
+
+  def on_mount(:require_superadmin, params, session, socket) do
+    case on_mount(:require_authenticated, params, session, socket) do
+      {:cont, socket} ->
+        if AndnativeAi.Accounts.User.superadmin?(socket.assigns.current_user) do
+          {:cont, socket}
+        else
+          socket =
+            socket
+            |> Phoenix.LiveView.put_flash(:error, "You do not have access to that page.")
+            |> Phoenix.LiveView.redirect(to: signed_in_path(socket))
+
+          {:halt, socket}
+        end
+
+      halted ->
+        halted
     end
   end
 

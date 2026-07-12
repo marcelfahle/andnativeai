@@ -317,4 +317,32 @@ defmodule AndnativeAi.AccountsTest do
       assert {:ok, _} = Accounts.delete_user(stub)
     end
   end
+
+  describe "roles" do
+    test "users default to the admin role" do
+      user = user_fixture()
+      assert user.role == "admin"
+      refute AndnativeAi.Accounts.User.superadmin?(user)
+    end
+
+    test "set_user_role/2 promotes and validates" do
+      user = user_fixture()
+
+      assert {:ok, superadmin} = Accounts.set_user_role(user, "superadmin")
+      assert superadmin.role == "superadmin"
+      assert AndnativeAi.Accounts.User.superadmin?(superadmin)
+
+      assert {:error, changeset} = Accounts.set_user_role(user, "root")
+      assert %{role: _} = errors_on(changeset)
+    end
+
+    test "promote_to_superadmin/1 works by email and reports unknown users" do
+      user = user_fixture()
+
+      assert {:ok, promoted} = Accounts.promote_to_superadmin(user.email)
+      assert promoted.role == "superadmin"
+
+      assert {:error, :not_found} = Accounts.promote_to_superadmin("ghost@example.com")
+    end
+  end
 end

@@ -124,6 +124,26 @@ defmodule AndnativeAi.Release do
     end)
   end
 
+  @doc """
+  Promotes a user to platform superadmin by email. The only supported way
+  to grant the role on a live appliance:
+  `just prod-eval "AndnativeAi.Release.promote_superadmin(\\\"ops@andnative.ai\\\")"`.
+  """
+  def promote_superadmin(email) when is_binary(email) do
+    with_task_env(fn _repo ->
+      case AndnativeAi.Accounts.promote_to_superadmin(email) do
+        {:ok, user} ->
+          IO.puts("#{user.email} is now a superadmin.")
+
+        {:error, :not_found} ->
+          IO.puts("No user found with email #{email}.")
+
+        {:error, changeset} ->
+          IO.puts("Could not promote #{email}: #{inspect(changeset.errors)}")
+      end
+    end)
+  end
+
   defp slack_credentials(tenant_id) do
     AndnativeAi.Slack.Installations.bot_credentials(tenant_id)
   end

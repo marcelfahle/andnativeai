@@ -129,4 +129,74 @@ defmodule AndnativeAiWeb.UserAuthTest do
       assert {:redirect, %{to: "/login"}} = halted.redirected
     end
   end
+
+  describe "on_mount :require_superadmin" do
+    test "continues for a superadmin", %{user: user} do
+      {:ok, superadmin} = Accounts.set_user_role(user, "superadmin")
+      token = Accounts.generate_user_session_token(superadmin)
+      session = %{"user_token" => token}
+
+      assert {:cont, socket} =
+               UserAuth.on_mount(:require_superadmin, %{}, session, %Phoenix.LiveView.Socket{})
+
+      assert socket.assigns.current_user.role == "superadmin"
+    end
+
+    test "halts and redirects an ordinary admin away", %{user: user} do
+      token = Accounts.generate_user_session_token(user)
+      session = %{"user_token" => token}
+
+      socket = %Phoenix.LiveView.Socket{
+        endpoint: AndnativeAiWeb.Endpoint,
+        assigns: %{__changed__: %{}, flash: %{}}
+      }
+
+      assert {:halt, halted} = UserAuth.on_mount(:require_superadmin, %{}, session, socket)
+      assert {:redirect, %{to: "/admin/control-plane"}} = halted.redirected
+    end
+
+    test "halts and redirects to /login when unauthenticated" do
+      socket = %Phoenix.LiveView.Socket{
+        endpoint: AndnativeAiWeb.Endpoint,
+        assigns: %{__changed__: %{}, flash: %{}}
+      }
+
+      assert {:halt, halted} = UserAuth.on_mount(:require_superadmin, %{}, %{}, socket)
+      assert {:redirect, %{to: "/login"}} = halted.redirected
+    end
+  end
+
+  describe "require_superadmin_user/2" do
+    test "passes a superadmin through", %{conn: conn, user: user} do
+      {:ok, superadmin} = Accounts.set_user_role(user, "superadmin")
+
+      conn =
+        conn
+        |> assign(:current_user, superadmin)
+        |> Phoenix.Controller.fetch_flash()
+        |> UserAuth.require_superadmin_user([])
+
+      refute conn.halted
+    end
+
+    test "halts and redirects an ordinary admin", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> assign(:current_user, user)
+        |> Phoenix.Controller.fetch_flash()
+        |> UserAuth.require_superadmin_user([])
+
+      assert conn.halted
+      assert redirected_to(conn) == ~p"/admin/control-plane"
+    end
+
+    test "halts and redirects when unauthenticated", %{conn: conn} do
+      conn =
+        conn
+        |> Phoenix.Controller.fetch_flash()
+        |> UserAuth.require_superadmin_user([])
+
+      assert conn.halted
+    end
+  end
 end

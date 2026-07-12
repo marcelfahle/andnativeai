@@ -66,6 +66,31 @@ defmodule AndnativeAi.Accounts do
     |> Repo.insert()
   end
 
+  ## Roles
+
+  @doc """
+  Sets a user's role (`"admin"` or `"superadmin"`).
+
+  Only callable from operational paths (Release task, seeds) — there is
+  deliberately no customer-facing UI for granting superadmin.
+  """
+  def set_user_role(%User{} = user, role) do
+    user
+    |> User.role_changeset(%{role: role})
+    |> Repo.update()
+  end
+
+  @doc """
+  Promotes the user with the given email to superadmin. Returns
+  `{:error, :not_found}` when no such user exists.
+  """
+  def promote_to_superadmin(email) when is_binary(email) do
+    case get_user_by_email(email) do
+      nil -> {:error, :not_found}
+      user -> set_user_role(user, "superadmin")
+    end
+  end
+
   ## Session
 
   @doc """
