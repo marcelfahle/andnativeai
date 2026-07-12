@@ -76,17 +76,25 @@ defmodule AndnativeAiWeb.UserAuth do
   end
 
   @doc """
-  Used for routes that only platform staff may reach. Assumes
-  `require_authenticated_user` ran earlier in the pipeline.
+  Used for routes that only platform staff may reach. Anonymous users get
+  the normal login redirect (with return-to); authenticated non-superadmins
+  are sent back to the control plane.
   """
-  def require_superadmin_user(conn, _opts) do
-    if AndnativeAi.Accounts.User.superadmin?(conn.assigns[:current_user]) do
-      conn
-    else
-      conn
-      |> put_flash(:error, "You do not have access to that page.")
-      |> redirect(to: signed_in_path(conn))
-      |> halt()
+  def require_superadmin_user(conn, opts) do
+    conn = require_authenticated_user(conn, opts)
+
+    cond do
+      conn.halted ->
+        conn
+
+      AndnativeAi.Accounts.User.superadmin?(conn.assigns[:current_user]) ->
+        conn
+
+      true ->
+        conn
+        |> put_flash(:error, "You do not have access to that page.")
+        |> redirect(to: signed_in_path(conn))
+        |> halt()
     end
   end
 

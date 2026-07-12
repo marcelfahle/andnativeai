@@ -190,13 +190,20 @@ defmodule AndnativeAiWeb.UserAuthTest do
       assert redirected_to(conn) == ~p"/admin/control-plane"
     end
 
-    test "halts and redirects when unauthenticated", %{conn: conn} do
+    test "halts and redirects to /login when unauthenticated" do
       conn =
-        conn
+        build_conn(:get, "/admin/fleet")
+        |> Map.replace!(:secret_key_base, AndnativeAiWeb.Endpoint.config(:secret_key_base))
+        |> init_test_session(%{})
         |> Phoenix.Controller.fetch_flash()
         |> UserAuth.require_superadmin_user([])
 
       assert conn.halted
+      assert redirected_to(conn) == ~p"/login"
+      assert get_session(conn, :user_return_to) == "/admin/fleet"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "You must log in to access this page."
     end
   end
 end
