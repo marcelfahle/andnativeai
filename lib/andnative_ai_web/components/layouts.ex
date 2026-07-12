@@ -63,6 +63,9 @@ defmodule AndnativeAiWeb.Layouts do
           <.link navigate={~p"/admin/runtime"} class="btn btn-ghost btn-sm">
             <.icon name="hero-command-line" class="size-4" /> Runtime
           </.link>
+          <.link navigate={~p"/admin/prospects"} class="btn btn-ghost btn-sm">
+            <.icon name="hero-light-bulb" class="size-4" /> Discover
+          </.link>
           <.theme_toggle />
           <div :if={@current_user} class="flex items-center gap-2 pl-2">
             <span class="hidden text-xs text-base-content/60 sm:inline">{@current_user.email}</span>
