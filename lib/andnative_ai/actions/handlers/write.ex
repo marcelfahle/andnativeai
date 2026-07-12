@@ -17,6 +17,9 @@ defmodule AndnativeAi.Actions.Handlers.Write do
   def run(action) do
     task = action.input["argument"] || action.input_summary
 
+    agent = action_agent(action)
+    model = AndnativeAi.Runtime.ModelPolicy.resolve(agent, :write)
+
     skills = if action.agent_id, do: Skills.enabled_skills(action.agent_id), else: []
     skill = Skills.select_for_text(skills, task) || List.first(skills)
 
@@ -26,14 +29,14 @@ defmodule AndnativeAi.Actions.Handlers.Write do
 
     context = memory_context(action.tenant_id, task)
 
-    case draft(task, skill, context) do
+    case draft(task, skill, context, model) do
       {:ok, draft_text} ->
         {:ok,
          %{
            title: "Draft — #{String.slice(task, 0, 60)}",
            markdown: document(task, skill, draft_text, context),
            summary: summary_line(skill, context),
-           provider: "openai/#{model()}",
+           provider: "openai/#{model}",
            citations: Enum.map(context, & &1.citation_url)
          }}
 
@@ -61,7 +64,7 @@ defmodule AndnativeAi.Actions.Handlers.Write do
     Enum.reject(results, &is_nil(&1.citation_url))
   end
 
-  defp draft(task, skill, context) do
+  defp draft(task, skill, context, model) do
     api_key = System.get_env("OPENAI_API_KEY", "")
 
     cond do
@@ -71,7 +74,7 @@ defmodule AndnativeAi.Actions.Handlers.Write do
       true ->
         openai_client().response(%{
           api_key: api_key,
-          model: model(),
+          model: model,
           instructions: instructions(skill),
           input: input(task, context),
           max_output_tokens: 900
@@ -162,5 +165,11 @@ defmodule AndnativeAi.Actions.Handlers.Write do
     "Draft written#{skill_part}, grounded in #{length(context)} cited memory sources."
   end
 
-  defp model, do: System.get_env("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
+  defp action_agent(%{agent_id: nil}), do: nil
+
+  defp action_agent(action) do
+    AndnativeAi.Memory.get_agent!(action.tenant_id, action.agent_id)
+  rescue
+    Ecto.NoResultsError -> nil
+  end
 end

@@ -41,6 +41,12 @@ defmodule AndnativeAi.Runtime.AuditEventKinds do
       tone: :warning,
       category: :governance
     },
+    "model_policy_changed" => %{
+      label: "Model policy changed",
+      icon: "hero-cpu-chip",
+      tone: :warning,
+      category: :governance
+    },
     "slack_mention_received" => %{
       label: "Slack mention",
       icon: "hero-chat-bubble-left-right",

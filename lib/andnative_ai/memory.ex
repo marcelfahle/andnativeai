@@ -132,6 +132,40 @@ defmodule AndnativeAi.Memory do
     |> Repo.update()
   end
 
+  @doc """
+  Updates an agent's base model and per-capability overrides — the
+  superadmin-only path. Every change lands on the governance audit trail
+  with the before/after models and who made the call.
+  """
+  def update_agent_model_policy(%Agent{} = agent, attrs, opts \\ []) do
+    result =
+      agent
+      |> Agent.model_policy_changeset(attrs)
+      |> Repo.update()
+
+    with {:ok, updated} <- result do
+      record_audit_best_effort(%{
+        tenant_id: agent.tenant_id,
+        agent_id: agent.id,
+        event_kind: "model_policy_changed",
+        component: "control_panel",
+        actor: Keyword.get(opts, :actor, "Superadmin"),
+        status: "confirmed",
+        summary: "Model policy for #{agent.name} changed.",
+        metadata: %{
+          agent_name: agent.name,
+          previous_model: agent.model,
+          model: updated.model,
+          previous_overrides: agent.model_policy,
+          overrides: updated.model_policy
+        },
+        occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+
+      result
+    end
+  end
+
   def create_source(tenant_id, attrs) do
     %Source{tenant_id: tenant_id}
     |> Source.changeset(attrs)
