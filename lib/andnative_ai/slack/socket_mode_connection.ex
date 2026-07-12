@@ -11,13 +11,24 @@ defmodule AndnativeAi.Slack.SocketModeConnection do
 
   @impl true
   def handle_frame({:text, payload}, state) do
-    with {:ok, envelope} <- Jason.decode(payload),
-         %{"envelope_id" => envelope_id} <- envelope do
-      handle_envelope(envelope, state)
-      {:reply, {:text, Jason.encode!(%{envelope_id: envelope_id})}, state}
-    else
-      error ->
-        Logger.warning("Ignoring malformed Slack Socket Mode frame: #{inspect(error)}")
+    case Jason.decode(payload) do
+      {:ok, %{"envelope_id" => envelope_id} = envelope} ->
+        handle_envelope(envelope, state)
+        {:reply, {:text, Jason.encode!(%{envelope_id: envelope_id})}, state}
+
+      {:ok, %{"type" => "hello"}} ->
+        Logger.info("Slack Socket Mode connected.")
+        {:ok, state}
+
+      {:ok, %{"type" => "disconnect"} = frame} ->
+        # Slack refreshes socket connections periodically; the URL from
+        # apps.connections.open is single-use, so close and let the
+        # listener open a fresh one.
+        Logger.info("Slack requested socket refresh (#{frame["reason"]}); reconnecting.")
+        {:close, state}
+
+      other ->
+        Logger.warning("Ignoring unrecognized Slack Socket Mode frame: #{inspect(other)}")
         {:ok, state}
     end
   end
@@ -25,7 +36,15 @@ defmodule AndnativeAi.Slack.SocketModeConnection do
   def handle_frame(_frame, state), do: {:ok, state}
 
   @impl true
-  def handle_disconnect(_connection_status, state), do: {:reconnect, state}
+  def handle_disconnect(connection_status, state) do
+    # Never reconnect here: the socket URL has expired. Stopping lets the
+    # listener request a fresh URL via apps.connections.open.
+    Logger.warning(
+      "Slack Socket Mode disconnected: #{inspect(Map.get(connection_status, :reason))}"
+    )
+
+    {:ok, state}
+  end
 
   defp handle_envelope(%{"payload" => %{"event" => event} = payload}, state) do
     case Installations.resolve_payload(payload, state.fallback_tenant_id, state.opts) do
