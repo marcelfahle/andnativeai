@@ -2,6 +2,13 @@
 
 set dotenv-load := true
 
+# Production appliance coordinates. Override per invocation when more
+# appliances exist: `just prod_host=deploy@other-box prod-ps`
+prod_host := "andnative-deploy@91.99.49.152"
+prod_dir := "/opt/andnativeai"
+prod_compose := "docker compose -p andnativeai -f hetzner-demo.compose.yml"
+prod_url := "https://andnativeai.marcelfahle.net"
+
 # Show available recipes
 default:
     @just --list
@@ -69,16 +76,60 @@ check:
 test:
     mix test
 
-# --- Deploy ---
+# --- Demo (local Compose stack) ---
+
+# Clear demo memory sources/items; keeps agents, config, and audit evidence
+demo-reset:
+    docker compose exec -T control-panel mix run scripts/reset-demo-memory.exs
+
+# Re-ingest one Slack channel from current history: `just demo-backfill C0123456789`
+demo-backfill channel:
+    docker compose exec -T control-panel mix run scripts/backfill-slack-channel.exs {{channel}}
+
+# Verify memory survives a Compose restart
+demo-persistence:
+    scripts/compose-persistence-check.sh
+
+# --- Demo (live Hetzner appliance) ---
+
+# Clear demo memory on the live appliance (release-safe; keeps agents + audit evidence)
+prod-demo-reset:
+    ssh {{prod_host}} 'cd {{prod_dir}}/deploy && {{prod_compose}} exec -T control-panel ./bin/andnative_ai eval "AndnativeAi.Release.reset_demo_memory()"'
+
+# Re-ingest one Slack channel on the live appliance: `just prod-demo-backfill C0123456789`
+prod-demo-backfill channel:
+    ssh {{prod_host}} 'cd {{prod_dir}}/deploy && {{prod_compose}} exec -T control-panel ./bin/andnative_ai eval "AndnativeAi.Release.backfill_slack_channel(\"{{channel}}\")"'
+
+# Restart the live app containers (persistence demo; data must survive)
+prod-restart:
+    ssh {{prod_host}} 'cd {{prod_dir}}/deploy && {{prod_compose}} restart control-panel slack-listener'
+
+# Run an arbitrary release expression on the live appliance: `just prod-eval "AndnativeAi.Release.migrate()"`
+prod-eval expr:
+    ssh {{prod_host}} 'cd {{prod_dir}}/deploy && {{prod_compose}} exec -T control-panel ./bin/andnative_ai eval "{{expr}}"'
+
+# --- Deploy & production ---
 
 # Deploy to Hetzner (push to main triggers CI in .github/workflows/deploy-main.yml)
 deploy:
     git push origin main
 
+# Watch the latest Deploy Main run until it finishes
+deploy-watch:
+    gh run watch $(gh run list --branch main --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status
+
 # Tail production logs on the Hetzner host
 prod-logs:
-    ssh andnative-deploy@91.99.49.152 'cd /opt/andnativeai/deploy && docker compose -p andnativeai -f hetzner-demo.compose.yml logs -f --tail=100'
+    ssh {{prod_host}} 'cd {{prod_dir}}/deploy && {{prod_compose}} logs -f --tail=100'
 
 # Show production container status
 prod-ps:
-    ssh andnative-deploy@91.99.49.152 'cd /opt/andnativeai/deploy && docker compose -p andnativeai -f hetzner-demo.compose.yml ps'
+    ssh {{prod_host}} 'cd {{prod_dir}}/deploy && {{prod_compose}} ps'
+
+# Open a shell on the Hetzner host
+prod-ssh:
+    ssh -t {{prod_host}} 'cd {{prod_dir}}; exec $SHELL -l'
+
+# Open the live admin UI
+prod-open:
+    open {{prod_url}}/admin/control-plane

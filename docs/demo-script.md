@@ -10,12 +10,14 @@ PRs #12-#14; record on a build where those are merged.
 
 ## Pre-flight (off camera)
 
-1. Server running (local `docker compose up` or the Hetzner demo), Slack app
+1. Server running (live Hetzner appliance, or local `just up`), Slack app
    connected, bot invited to one public test channel (e.g. `#demo-general`).
+   For the live appliance see `docs/demo-checklist.md`.
 2. Reset memory so the story is deterministic:
 
    ```sh
-   docker compose exec -T control-panel mix run scripts/reset-demo-memory.exs
+   just prod-demo-reset   # live appliance
+   just demo-reset        # local stack
    ```
 
 3. Have `priv/fixtures/demo/handbook.md` (or any short policy Markdown file
@@ -119,11 +121,13 @@ PRs #12-#14; record on a build where those are merged.
 ## Reset between takes
 
 ```sh
-docker compose exec -T control-panel mix run scripts/reset-demo-memory.exs
+just prod-demo-reset   # live appliance
+just demo-reset        # local stack
 ```
 
 Then re-invite/backfill the Slack channel if needed:
 
 ```sh
-docker compose exec -T control-panel mix run scripts/backfill-slack-channel.exs C0123456789
+just prod-demo-backfill C0123456789   # live appliance
+just demo-backfill C0123456789        # local stack
 ```

@@ -167,22 +167,23 @@ Behavior:
 
 ## Demo Commands
 
-Reset demo memory:
+Common commands are `just` recipes (`just --list`). Local stack:
 
 ```sh
-docker compose exec -T control-panel mix run scripts/reset-demo-memory.exs
+just demo-reset                    # clear demo memory (mix script)
+just demo-backfill C0123456789     # re-ingest a joined Slack channel
+just demo-persistence              # verify memory survives a restart
 ```
 
-Backfill an already-joined Slack channel:
+Live Hetzner appliance — the box runs an OTP release without Mix, so these
+call release-safe tasks in `AndnativeAi.Release`
+(`reset_demo_memory/0`, `backfill_slack_channel/1`) via
+`bin/andnative_ai eval`:
 
 ```sh
-docker compose exec -T control-panel mix run scripts/backfill-slack-channel.exs C0123456789
-```
-
-Verify Compose persistence:
-
-```sh
-scripts/compose-persistence-check.sh
+just prod-demo-reset
+just prod-demo-backfill C0123456789
+just prod-restart                  # persistence demo on the live box
 ```
 
 ## Verification
