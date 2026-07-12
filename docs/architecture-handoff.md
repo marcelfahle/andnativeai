@@ -12,8 +12,10 @@ tenant is created by `AndnativeAi.Memory.ensure_demo_tenant!/0` with slug
 - `redis`: local queue/cache placeholder.
 - `minio`: local object-storage placeholder. Current document upload stores
   raw files on disk under `RAW_SOURCES_PATH`.
-- `memory-service` and `openclaw-gateway`: placeholder containers for future
-  service split.
+
+The memory service and OpenClaw adapter run inside the `control-panel` and
+`slack-listener` releases; the `RuntimeAdapter` behaviour and
+`OPENCLAW_GATEWAY_URL` keep a future service split additive (DEC-019).
 
 ## Core Tables
 
