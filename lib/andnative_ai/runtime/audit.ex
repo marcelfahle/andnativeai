@@ -142,6 +142,7 @@ defmodule AndnativeAi.Runtime.Audit do
     Enum.map(value, &sanitize_metadata_value/1)
   end
 
+  defp sanitize_metadata_value(value) when is_boolean(value), do: value
   defp sanitize_metadata_value(value) when is_atom(value), do: to_string(value)
   defp sanitize_metadata_value(value), do: value
 

@@ -14,6 +14,10 @@ defmodule AndnativeAi.Slack.Distiller do
     |> Enum.flat_map(&summarize_group(channel_id, &1, opts))
   end
 
+  def noise?(%{"app_message" => true, "text" => text}) when is_binary(text) do
+    String.trim(text) == ""
+  end
+
   def noise?(%{"text" => text}) when is_binary(text) do
     normalized =
       text
@@ -56,22 +60,34 @@ defmodule AndnativeAi.Slack.Distiller do
       {:ok, permalink} =
         client.permalink(bot_token, channel_id, first["ts"] || first["event_ts"] || "")
 
+      provenance = %{
+        "slack_channel" => channel_id,
+        "slack_thread_ts" => first["thread_ts"] || first["ts"],
+        "slack_ts" => first["ts"] || first["event_ts"],
+        "authors" => authors(durable_messages),
+        "message_count" => length(messages),
+        "permalink" => permalink
+      }
+
+      provenance =
+        case Enum.find_value(durable_messages, & &1["app_link"]) do
+          nil -> provenance
+          app_link -> Map.put(provenance, "app_link", app_link)
+        end
+
       [
         %{
           text: summary_text(channel_id, durable_messages),
           channel_id: channel_id,
-          provenance: %{
-            "slack_channel" => channel_id,
-            "slack_thread_ts" => first["thread_ts"] || first["ts"],
-            "slack_ts" => first["ts"] || first["event_ts"],
-            "authors" => authors(durable_messages),
-            "message_count" => length(messages),
-            "permalink" => permalink
-          }
+          provenance: provenance
         }
       ]
     end
   end
+
+  # App/bot notifications (Linear updates and similar) are curated content:
+  # once a channel opts in, they count as durable memory as-is.
+  defp durable?(%{"app_message" => true}), do: true
 
   defp durable?(%{"text" => text}) do
     tokens =
