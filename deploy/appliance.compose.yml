@@ -1,0 +1,111 @@
+# Generic per-appliance Compose project. Lives next to its rendered .env
+# under /opt/appliances/<slug>/; created by scripts/provision-appliance.sh.
+# Every step here maps 1:1 to a future Helm value (provisioning plan).
+services:
+  control-panel:
+    build:
+      context: ${REPO_DIR:?Set REPO_DIR in .env}
+      target: release
+    command: ./bin/control-panel
+    env_file:
+      - ./.env
+    environment:
+      MIX_ENV: prod
+      PHX_SERVER: "true"
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: andnative_ai_prod
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      PHX_HOST: ${PHX_HOST:?Set PHX_HOST in .env}
+      PORT: 4000
+      MINIO_ENDPOINT: http://minio:9000
+      REDIS_URL: redis://redis:6379/0
+      RAW_SOURCES_PATH: /app/var/sources
+      OPENCLAW_WORKSPACE_PATH: /app/var/openclaw
+    volumes:
+      - ./var/sources:/app/var/sources
+      - ./var/openclaw:/app/var/openclaw
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:4000/admin/control-plane"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    networks:
+      - default
+      - caddy
+
+  slack-listener:
+    build:
+      context: ${REPO_DIR:?Set REPO_DIR in .env}
+      target: release
+    command: ./bin/slack-listener
+    env_file:
+      - ./.env
+    environment:
+      MIX_ENV: prod
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: andnative_ai_prod
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      SERVICE_ROLE: slack-listener
+      SLACK_SOCKET_MODE: "true"
+      PHX_HOST: ${PHX_HOST:?Set PHX_HOST in .env}
+      MINIO_ENDPOINT: http://minio:9000
+      REDIS_URL: redis://redis:6379/0
+      RAW_SOURCES_PATH: /app/var/sources
+      OPENCLAW_WORKSPACE_PATH: /app/var/openclaw
+    restart: unless-stopped
+    depends_on:
+      control-panel:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: andnative_ai_prod
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ./var/postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - ./var/redis:/data
+    restart: unless-stopped
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: andnative
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - ./var/minio:/data
+    restart: unless-stopped
+
+networks:
+  caddy:
+    external: true
+    name: ${CADDY_NETWORK:-deploy_default}
