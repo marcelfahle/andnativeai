@@ -48,6 +48,9 @@ defmodule AndnativeAiWeb.Layouts do
           <.link navigate={~p"/admin/control-plane"} class="btn btn-ghost btn-sm">
             <.icon name="hero-shield-check" class="size-4" /> Control
           </.link>
+          <.link navigate={~p"/admin/memory"} class="btn btn-ghost btn-sm">
+            <.icon name="hero-circle-stack" class="size-4" /> Memory
+          </.link>
           <.link navigate={~p"/admin/agents"} class="btn btn-ghost btn-sm">
             <.icon name="hero-cpu-chip" class="size-4" /> Agents
           </.link>
