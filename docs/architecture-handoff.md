@@ -49,13 +49,24 @@ Behavior:
 - Shows the prospect-facing governed-memory appliance dashboard at
   `/admin/control-plane`.
 - Uses live data for source counts, memory chunk counts, Slack installs, agent
-  sync health, and persisted audit events.
+  sync health, and persisted audit events. An Outcomes section adds
+  business-facing tiles: questions answered, answers with citations, a labeled
+  time-saved estimate, a labeled model-spend placeholder, and a state-aware
+  "next step" recommendation card.
 - Shows an honest empty state when no runtime audit events exist. The page no
   longer fabricates runtime trust events on refresh.
-- Runtime timeline rows come from `runtime_audit_events` and include event kind,
-  timestamp, actor/component, status, request id when present, and citation link
-  when present.
-- Event-kind validation and display metadata share
+- The Governed activity timeline is backed by `Audit.list_events/2` with
+  category filter chips (memory, runtime, governance, errors, with counts),
+  free-text search over request id/summary/actor/kind, and cursor-based
+  "load older" pagination.
+- New audit rows stream in live over Phoenix.PubSub
+  (`Audit.subscribe/1` -> `{:audit_event_recorded, event}`); rows animate in
+  and counters update without a refresh.
+- Clicking a row opens an inspector panel with status, actor, component,
+  request id, citation link or label, sanitized metadata ("Evidence"), and the
+  correlated request trace (`Audit.list_request_events/2`) with relative
+  timing offsets. Trace steps are clickable.
+- Event-kind validation, display metadata, and filter categories share
   `AndnativeAi.Runtime.AuditEventKinds` so the schema and UI do not drift.
 
 ### Document Upload
