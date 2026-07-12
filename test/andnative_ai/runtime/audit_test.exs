@@ -262,12 +262,40 @@ defmodule AndnativeAi.Runtime.AuditTest do
       assert [%{id: id_c}] = Audit.list_events(tenant.id, query: "handbook")
       assert id_c == deleted.id
 
-      # Cursor pagination walks backwards through ids.
+      # Cursor pagination walks backwards through the (occurred_at, id)
+      # ordering key.
       assert [first, second] = Audit.list_events(tenant.id, limit: 2)
       assert first.id == indexed.id
 
-      assert [third] = Audit.list_events(tenant.id, before_id: second.id)
+      assert [third] = Audit.list_events(tenant.id, before: second)
       assert third.id == searched.id
+    end
+
+    test "cursor pagination stays consistent with backdated occurred_at" do
+      tenant = tenant_fixture("audit-backdated")
+      base = ~U[2026-07-11 10:00:00Z]
+
+      # Insert out of chronological order: the second insert is backdated,
+      # so id order and occurred_at order disagree.
+      for {offset, summary} <- [{2, "newest"}, {0, "oldest (backdated)"}, {1, "middle"}] do
+        {:ok, _} =
+          Audit.record_event(%{
+            tenant_id: tenant.id,
+            event_kind: "memory_indexed",
+            component: "memory_service",
+            actor: "Memory service",
+            status: "indexed",
+            summary: summary,
+            occurred_at: DateTime.add(base, offset, :second)
+          })
+      end
+
+      assert [page_one_first, page_one_second] = Audit.list_events(tenant.id, limit: 2)
+      assert page_one_first.summary == "newest"
+      assert page_one_second.summary == "middle"
+
+      assert [last] = Audit.list_events(tenant.id, before: page_one_second, limit: 2)
+      assert last.summary == "oldest (backdated)"
     end
 
     test "category_counts groups event totals by category" do

@@ -58,7 +58,7 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
         limit: @page_size,
         category: socket.assigns.filter,
         query: socket.assigns.query,
-        before_id: socket.assigns.oldest_id
+        before: socket.assigns.oldest_cursor
       )
 
     presented = Enum.map(events, &ControlPlane.present_event/1)
@@ -70,7 +70,7 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
 
     {:noreply,
      socket
-     |> assign(:oldest_id, oldest_id(events, socket.assigns.oldest_id))
+     |> assign(:oldest_cursor, oldest_cursor(events, socket.assigns.oldest_cursor))
      |> assign(:has_more?, length(events) == @page_size)}
   end
 
@@ -153,13 +153,17 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
 
     socket
     |> assign(:timeline_empty?, presented == [])
-    |> assign(:oldest_id, oldest_id(events, nil))
+    |> assign(:oldest_cursor, oldest_cursor(events, nil))
     |> assign(:has_more?, length(events) == @page_size)
     |> stream(:audit_events, presented, reset: true)
   end
 
-  defp oldest_id([], fallback), do: fallback
-  defp oldest_id(events, _fallback), do: events |> List.last() |> Map.fetch!(:id)
+  defp oldest_cursor([], fallback), do: fallback
+
+  defp oldest_cursor(events, _fallback) do
+    %{occurred_at: occurred_at, id: id} = List.last(events)
+    %{occurred_at: occurred_at, id: id}
+  end
 
   defp visible_with_filters?(event, filter, query) do
     category_match? = filter in ["all", Atom.to_string(event.category)]
@@ -759,7 +763,7 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
     String.slice(request_id, 0, 18)
   end
 
-  defp trace_offset(trace, 0) when length(trace) > 0, do: "start"
+  defp trace_offset(_trace, 0), do: "start"
 
   defp trace_offset(trace, index) do
     first = List.first(trace)
@@ -782,6 +786,7 @@ defmodule AndnativeAiWeb.Admin.ControlPlaneLive do
         %{} = nested when map_size(nested) > 0 -> flatten_metadata(nested, full_key)
         %{} -> [{full_key, "{}"}]
         list when is_list(list) -> [{full_key, inspect(list)}]
+        nil -> [{full_key, "null"}]
         other -> [{full_key, to_string(other)}]
       end
     end)

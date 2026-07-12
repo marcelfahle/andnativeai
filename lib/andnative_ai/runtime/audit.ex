@@ -145,7 +145,9 @@ defmodule AndnativeAi.Runtime.Audit do
     * `:category` - a category key from `AuditEventKinds.categories/0`
       (atom or string); restricts to that category's event kinds
     * `:query` - matches request id, summary, actor, or event kind (ilike)
-    * `:before_id` - cursor for pagination; returns events with a smaller id
+    * `:before` - pagination cursor: the last displayed `%AuditEvent{}` or
+      presented map (anything with `occurred_at` and `id`); returns events
+      strictly older in the `(occurred_at, id)` ordering
     * `:limit` - page size, clamped to 1..100 (default 25)
     * `:preload` - associations to preload
   """
@@ -157,7 +159,7 @@ defmodule AndnativeAi.Runtime.Audit do
     |> where([event], event.tenant_id == ^tenant_id)
     |> apply_category(Keyword.get(opts, :category))
     |> apply_query(Keyword.get(opts, :query))
-    |> apply_cursor(Keyword.get(opts, :before_id))
+    |> apply_cursor(Keyword.get(opts, :before))
     |> order_by([event], desc: event.occurred_at, desc: event.id)
     |> limit(^limit)
     |> preload(^preload)
@@ -248,11 +250,19 @@ defmodule AndnativeAi.Runtime.Audit do
 
   defp apply_query(queryable, _query), do: queryable
 
-  defp apply_cursor(queryable, before_id) when is_integer(before_id) do
-    where(queryable, [event], event.id < ^before_id)
+  # Cursor on the full ordering key: occurred_at can be backdated, so id
+  # alone could skip or duplicate rows across pages.
+  defp apply_cursor(queryable, %{occurred_at: %DateTime{} = occurred_at, id: id})
+       when is_integer(id) do
+    where(
+      queryable,
+      [event],
+      event.occurred_at < ^occurred_at or
+        (event.occurred_at == ^occurred_at and event.id < ^id)
+    )
   end
 
-  defp apply_cursor(queryable, _before_id), do: queryable
+  defp apply_cursor(queryable, _before), do: queryable
 
   defp sanitize_like(query) do
     String.replace(query, ~r/[%_\\]/, fn char -> "\\" <> char end)
