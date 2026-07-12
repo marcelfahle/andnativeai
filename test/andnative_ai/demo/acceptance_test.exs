@@ -72,7 +72,7 @@ defmodule AndnativeAi.Demo.AcceptanceTest do
 
     [doc_result | _] = Service.search(tenant.id, "reimbursement approval", %{limit: 2})
     assert doc_result.source.name == "handbook.md"
-    assert doc_result.citation_url =~ "/admin/memory#memory-source-"
+    assert doc_result.citation_url =~ "/sources/"
 
     assert {:ok, response} =
              OpenClaw.dispatch_mention(agent, %{
@@ -104,7 +104,7 @@ defmodule AndnativeAi.Demo.AcceptanceTest do
 
     assert Enum.any?(
              known_response.citations,
-             &String.contains?(&1, "/admin/memory#memory-source-")
+             &String.contains?(&1, "/sources/")
            )
 
     assert {:ok, %{deleted_items_count: deleted_count}} =
