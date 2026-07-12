@@ -79,8 +79,13 @@ See `docs/slack-app.md` for the Socket Mode app setup.
 - `docs/agent-setup.md` explains the current agent setup and multiple-agent
   rules.
 - `scripts/compose-persistence-check.sh` verifies memory survives a Compose restart.
-- `/admin/control-plane` shows the governed-memory control plane, operational
-  status, and persisted runtime audit timeline.
+- `/admin/control-plane` shows the governed-memory control plane: outcome
+  tiles, operational status, and the live governed-activity timeline with
+  filters, search, and a request-trace inspector.
+- `/admin/memory` is the memory map: scope layers, sources grouped by type
+  with retrieval state, and expandable chunks with citations.
+- `/admin/prospects` (Discover) captures one painful prospect workflow and
+  produces a screen-share-ready evaluation plan with a 90-day roadmap.
 
 ## Development Handoff
 
