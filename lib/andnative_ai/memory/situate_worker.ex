@@ -25,6 +25,16 @@ defmodule AndnativeAi.Memory.SituateWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"source_id" => source_id, "tenant_id" => tenant_id}}) do
+    if enabled?() do
+      situate_source(tenant_id, source_id)
+    else
+      # The key was removed between enqueue and execution; situating is an
+      # upgrade, so skip quietly instead of burning retries on 401s.
+      :ok
+    end
+  end
+
+  defp situate_source(tenant_id, source_id) do
     source = Memory.get_source!(tenant_id, source_id)
     items = Memory.list_source_memory_items(tenant_id, source_id)
     document = document_text(items)
@@ -61,21 +71,25 @@ defmodule AndnativeAi.Memory.SituateWorker do
   providers; invoked from `AndnativeAi.Release.reembed_memory/0`.
   """
   def reembed_all(tenant_id) do
-    items =
-      Repo.all(
-        from item in Item,
-          where: item.tenant_id == ^tenant_id and is_nil(item.deleted_at)
+    {:ok, count} =
+      Repo.transaction(
+        fn ->
+          from(item in Item, where: item.tenant_id == ^tenant_id and is_nil(item.deleted_at))
+          |> Repo.stream(max_rows: 100)
+          |> Enum.reduce(0, fn item, count ->
+            text = if item.context, do: item.context <> "\n" <> item.text, else: item.text
+
+            item
+            |> Item.changeset(%{embedding: Embeddings.embed(text)})
+            |> Repo.update!()
+
+            count + 1
+          end)
+        end,
+        timeout: :infinity
       )
 
-    Enum.each(items, fn item ->
-      text = if item.context, do: item.context <> "\n" <> item.text, else: item.text
-
-      item
-      |> Item.changeset(%{embedding: Embeddings.embed(text)})
-      |> Repo.update!()
-    end)
-
-    length(items)
+    count
   end
 
   defp document_text(items) do

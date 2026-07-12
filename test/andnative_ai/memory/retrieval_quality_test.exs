@@ -22,6 +22,7 @@ defmodule AndnativeAi.Memory.RetrievalQualityTest do
   setup do
     Application.put_env(:andnative_ai, :openai_client, FakeOpenAI)
     previous_provider = Application.get_env(:andnative_ai, :embeddings_provider)
+    previous_key = System.get_env("OPENAI_API_KEY")
 
     on_exit(fn ->
       Application.delete_env(:andnative_ai, :openai_client)
@@ -30,7 +31,9 @@ defmodule AndnativeAi.Memory.RetrievalQualityTest do
         do: Application.put_env(:andnative_ai, :embeddings_provider, previous_provider),
         else: Application.delete_env(:andnative_ai, :embeddings_provider)
 
-      System.delete_env("OPENAI_API_KEY")
+      if previous_key,
+        do: System.put_env("OPENAI_API_KEY", previous_key),
+        else: System.delete_env("OPENAI_API_KEY")
     end)
 
     {:ok, tenant} =

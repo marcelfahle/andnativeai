@@ -299,3 +299,9 @@ Why:
 - Ingest stays fast (situating runs in an Oban :memory queue) and works
   credential-free (situating and provider embeddings simply stay off).
 - The lexical rerank guard (DEC-006) stays in place for both providers.
+- Provider API failures fall back to deterministic vectors for the affected
+  chunks (loudly logged). Those rows live in a different vector space until
+  healed — `Release.reembed_memory/0` re-embeds the corpus, and the lexical
+  guard prevents nonsense results in the meantime. Failing ingest outright
+  was rejected: losing a customer upload is worse than a temporarily
+  degraded ranking.
