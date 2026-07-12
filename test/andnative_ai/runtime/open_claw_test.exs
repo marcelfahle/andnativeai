@@ -18,8 +18,7 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
     def response(request) do
       send(self(), {:openai_request, request})
 
-      {:ok,
-       "Yo! Refund approvals require support escalation.\n\nSource: https://docs.example.com/refunds"}
+      {:ok, "Yo! Refund approvals require support escalation."}
     end
   end
 
@@ -189,7 +188,7 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
              })
 
     assert response.answer =~ "Yo!"
-    assert response.answer =~ "https://docs.example.com/refunds"
+    refute response.answer =~ "https://"
 
     assert_received {:openai_request, request}
     assert request.instructions =~ agent.identity
@@ -245,6 +244,8 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
     assert response.answer =~ "Refund approvals"
     assert_received {:posted_slack_message, "CMENTION", posted_text, "1710000200.000100"}
     assert posted_text =~ "Refund approvals"
+    refute posted_text =~ "Source"
+    refute posted_text =~ "https://"
 
     events = runtime_events(tenant.id, response.request_id)
 

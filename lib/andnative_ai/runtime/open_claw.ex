@@ -93,7 +93,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
       },
       instructions: [
         "Use memory_search before answering Slack questions.",
-        "Cite the returned Slack permalink or document URL in the answer."
+        "Never include source URLs in answers; provenance is recorded on the governance audit trail."
       ]
     }
   end
