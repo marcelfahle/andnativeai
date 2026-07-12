@@ -83,8 +83,13 @@ defmodule AndnativeAi.Research.Gemini do
   end
 
   defp request(method, path, opts) do
-    api_key = System.fetch_env!("GEMINI_API_KEY")
+    case System.get_env("GEMINI_API_KEY", "") do
+      "" -> {:error, :research_provider_not_configured}
+      api_key -> do_request(method, path, opts, api_key)
+    end
+  end
 
+  defp do_request(method, path, opts, api_key) do
     [
       method: method,
       url: @api <> path,

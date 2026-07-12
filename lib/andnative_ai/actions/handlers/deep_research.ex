@@ -30,7 +30,7 @@ defmodule AndnativeAi.Actions.Handlers.DeepResearch do
              cost_note(report),
          provider: report.provider,
          cost_cents: report[:cost_cents],
-         citations: Enum.take(report.citations, 10)
+         citations: report.citations
        }}
     else
       {:error, reason} -> {:error, reason}
