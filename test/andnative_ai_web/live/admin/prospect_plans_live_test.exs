@@ -47,9 +47,12 @@ defmodule AndnativeAiWeb.Admin.ProspectPlansLiveTest do
     html =
       view
       |> form("#prospect-plan-form", %{prospect_plan: %{company_name: "", workflow_pain: ""}})
-      |> render_submit()
+      |> render_change()
 
     assert html =~ "can&#39;t be blank"
+
+    # Submitting the invalid form keeps the errors and creates nothing.
+    assert render_submit(form(view, "#prospect-plan-form")) =~ "can&#39;t be blank"
   end
 
   test "deletes a plan from the list", %{conn: conn} do

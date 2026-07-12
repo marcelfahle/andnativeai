@@ -41,13 +41,19 @@ defmodule AndnativeAiWeb.Admin.ProspectPlansLive do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    plan = Prospects.get_plan!(socket.assigns.tenant.id, String.to_integer(id))
-    {:ok, _} = Prospects.delete_plan(plan)
+    case Integer.parse(to_string(id)) do
+      {plan_id, ""} ->
+        plan = Prospects.get_plan!(socket.assigns.tenant.id, plan_id)
+        {:ok, _} = Prospects.delete_plan(plan)
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "Plan deleted.")
-     |> assign(:plans, Prospects.list_plans(socket.assigns.tenant.id))}
+        {:noreply,
+         socket
+         |> put_flash(:info, "Plan deleted.")
+         |> assign(:plans, Prospects.list_plans(socket.assigns.tenant.id))}
+
+      _invalid ->
+        {:noreply, socket}
+    end
   end
 
   defp new_form(tenant) do
