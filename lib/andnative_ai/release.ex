@@ -144,6 +144,11 @@ defmodule AndnativeAi.Release do
   end
 
   defp ensure_pubsub_started do
+    # In `bin/andnative_ai eval` no applications are running; the PG2
+    # adapter needs the :phoenix_pubsub application's registry process
+    # before a PubSub instance can start.
+    {:ok, _apps} = Application.ensure_all_started(:phoenix_pubsub)
+
     if Process.whereis(AndnativeAi.PubSub) do
       :ok
     else
