@@ -4,12 +4,14 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
   alias AndnativeAi.Accounts
   alias AndnativeAi.Accounts.User
 
-  # Superadmin rows never render on this page, but event payloads are
-  # user-controlled input — every targeted event is denied through this
-  # one predicate.
-  defp hidden_from_customer_admin?(user) do
-    is_nil(user) or User.superadmin?(user)
-  end
+  # Platform accounts are hidden from CUSTOMER admins — not from each
+  # other. Staff hiding themselves from staff serves no one, and on our
+  # own appliance it makes the page look empty.
+  defp hidden?(_user, %{role: "superadmin"}), do: false
+  defp hidden?(user, _viewer), do: is_nil(user) or User.superadmin?(user)
+
+  defp visible_users(%{role: "superadmin"}), do: Accounts.list_users()
+  defp visible_users(_viewer), do: Accounts.list_customer_users()
 
   def render(assigns) do
     ~H"""
@@ -66,7 +68,7 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
     {:ok,
      socket
      |> assign(:page_title, "Users")
-     |> stream(:users, Accounts.list_customer_users())}
+     |> stream(:users, visible_users(socket.assigns.current_user))}
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
@@ -77,7 +79,7 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
 
     socket =
       cond do
-        hidden_from_customer_admin?(user) ->
+        hidden?(user, socket.assigns.current_user) ->
           put_flash(socket, :error, "That user no longer exists.")
 
         user.id == socket.assigns.current_user.id ->
@@ -106,7 +108,7 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
 
     socket =
       cond do
-        hidden_from_customer_admin?(user) ->
+        hidden?(user, socket.assigns.current_user) ->
           put_flash(socket, :error, "That user no longer exists.")
 
         true ->

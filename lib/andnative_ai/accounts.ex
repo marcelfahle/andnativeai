@@ -216,14 +216,27 @@ defmodule AndnativeAi.Accounts do
   password and an unset `confirmed_at`, then emails an activation link. The
   invitee sets their real password via `accept_invitation/2`.
   """
-  # A superadmin's email must be as invisible here as it is in the user
-  # list: a unique-constraint error would otherwise confirm the hidden
-  # account exists. Report the same success the caller shows for a fresh
-  # invite, and deliver nothing.
-  def invite_user(email, invite_url_fun) when is_function(invite_url_fun, 1) do
+  @doc """
+  Invites a user by email.
+
+  A superadmin's email must be as invisible to a customer admin as it is
+  in the user list: a unique-constraint error would otherwise confirm the
+  hidden account exists, so the customer path reports the same success it
+  shows for a fresh invite and delivers nothing. Platform staff
+  (`actor: %User{role: "superadmin"}`) see the real result — hiding staff
+  from staff serves no one.
+  """
+  def invite_user(email, invite_url_fun, opts \\ []) when is_function(invite_url_fun, 1) do
+    actor = Keyword.get(opts, :actor)
+
     case get_user_by_email(email) do
-      %User{role: "superadmin"} = user -> {:ok, user}
-      _other -> do_invite_user(email, invite_url_fun)
+      %User{role: "superadmin"} = user ->
+        if User.superadmin?(actor),
+          do: {:error, :already_active_superadmin},
+          else: {:ok, user}
+
+      _other ->
+        do_invite_user(email, invite_url_fun)
     end
   end
 

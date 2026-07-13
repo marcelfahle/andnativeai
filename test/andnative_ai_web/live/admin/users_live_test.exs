@@ -100,6 +100,23 @@ defmodule AndnativeAiWeb.Admin.UsersLiveTest do
       assert_no_email_sent()
     end
 
+    test "a superadmin sees platform accounts and can act on them", %{conn: conn, user: user} do
+      {:ok, viewer} = AndnativeAi.Accounts.set_user_role(user, "superadmin")
+      conn = log_in_user(conn, viewer)
+
+      {:ok, _other} =
+        AndnativeAi.Accounts.set_user_role(
+          user_fixture(%{email: "platform2@andnative.ai"}),
+          "superadmin"
+        )
+
+      {:ok, _view, html} = live(conn, ~p"/admin/users")
+
+      # Staff hiding from staff serves no one — the page must not look empty.
+      assert html =~ "platform2@andnative.ai"
+      assert html =~ viewer.email
+    end
+
     test "inviting a platform email never reveals the hidden account", %{conn: conn} do
       {:ok, superadmin} =
         AndnativeAi.Accounts.set_user_role(
@@ -109,11 +126,23 @@ defmodule AndnativeAiWeb.Admin.UsersLiveTest do
 
       # Same shape as a fresh invite (no unique-constraint error to read),
       # and nothing is delivered.
+      # A customer admin gets the same shape as a fresh invite, and nothing
+      # is delivered.
+      customer_admin = user_fixture()
+
       assert {:ok, returned} =
-               AndnativeAi.Accounts.invite_user("hidden@andnative.ai", &"http://x/#{&1}")
+               AndnativeAi.Accounts.invite_user("hidden@andnative.ai", &"http://x/#{&1}",
+                 actor: customer_admin
+               )
 
       assert returned.id == superadmin.id
       assert_no_email_sent()
+
+      # Platform staff see the truth instead of a fiction.
+      assert {:error, :already_active_superadmin} =
+               AndnativeAi.Accounts.invite_user("hidden@andnative.ai", &"http://x/#{&1}",
+                 actor: superadmin
+               )
     end
   end
 end
