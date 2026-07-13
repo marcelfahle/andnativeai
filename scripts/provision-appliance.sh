@@ -35,6 +35,18 @@ SLUG="$1"
 DOMAIN="$2"
 ADMIN_EMAIL="$3"
 
+case "$DOMAIN" in
+  *[!a-z0-9.-]* | "" | .* | *. | *..* )
+    echo "error: domain must be a bare lowercase hostname (got '$DOMAIN')" >&2
+    exit 64
+    ;;
+  *.*) ;;
+  *)
+    echo "error: domain needs at least one dot (got '$DOMAIN')" >&2
+    exit 64
+    ;;
+esac
+
 case "$SLUG" in
   *[!a-z0-9-]* | "" | -* )
     echo "error: slug must be lowercase letters, digits, and dashes (got '$SLUG')" >&2
@@ -158,6 +170,10 @@ done
 if [ "${status:-}" != "healthy" ]; then
   echo "error: control-panel did not become healthy; inspect with:" >&2
   echo "       ${COMPOSE[*]} logs control-panel" >&2
+  echo "" >&2
+  echo "To retry from scratch (the already-provisioned guard will otherwise refuse):" >&2
+  echo "       ${COMPOSE[*]} down" >&2
+  echo "       mv '$BASE' '$BASE.failed.$(date +%s)'" >&2
   exit 1
 fi
 
@@ -171,13 +187,19 @@ $DOMAIN {
 }
 CADDYEOF
 
+if [ "${QUIET_CREDENTIALS:-false}" = "true" ]; then
+  credentials_line="stored in $BASE/.env (QUIET_CREDENTIALS — read them over SSH)"
+else
+  credentials_line="$ADMIN_PASSWORD   <- stored in $BASE/.env; rotate after first login"
+fi
+
 cat <<SUMMARY
 
 Appliance '$SLUG' is up.
 
   URL            https://$DOMAIN  (once the Caddy vhost is live)
   Admin login    $ADMIN_EMAIL
-  Admin password $ADMIN_PASSWORD   <- stored in $BASE/.env; rotate after first login
+  Admin password $credentials_line
   Compose        ${COMPOSE[*]}
 
 Go-live checklist:
