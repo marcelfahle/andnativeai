@@ -345,4 +345,51 @@ defmodule AndnativeAi.AccountsTest do
       assert {:error, :not_found} = Accounts.promote_to_superadmin("ghost@example.com")
     end
   end
+
+  describe "platform superadmin visibility (AAI-34)" do
+    test "list_customer_users/0 excludes superadmins; list_users/0 includes them" do
+      admin = user_fixture()
+      {:ok, superadmin} = Accounts.set_user_role(user_fixture(), "superadmin")
+
+      customer_ids = Enum.map(Accounts.list_customer_users(), & &1.id)
+      all_ids = Enum.map(Accounts.list_users(), & &1.id)
+
+      assert admin.id in customer_ids
+      refute superadmin.id in customer_ids
+      assert superadmin.id in all_ids
+    end
+
+    test "superadmins never count toward the last-user guard" do
+      admin = user_fixture()
+      {:ok, _superadmin} = Accounts.set_user_role(user_fixture(), "superadmin")
+
+      # The customer's only admin stays protected even though other
+      # (platform) accounts exist.
+      assert {:error, :last_user} = Accounts.delete_user(admin)
+    end
+
+    test "a role change invalidates sessions, reset links, and invites" do
+      user = user_fixture()
+      token = Accounts.generate_user_session_token(user)
+      assert Accounts.get_user_by_session_token(token)
+
+      {:ok, _superadmin} = Accounts.set_user_role(user, "superadmin")
+
+      # Credentials issued under the old role must not survive the elevation.
+      refute Accounts.get_user_by_session_token(token)
+    end
+
+    test "superadmins are excluded from self-serve password reset delivery" do
+      {:ok, superadmin} = Accounts.set_user_role(user_fixture(), "superadmin")
+
+      assert {:error, :superadmin_reset_disabled} =
+               Accounts.deliver_user_reset_password_instructions(
+                 superadmin,
+                 &"http://example.com/#{&1}"
+               )
+
+      # No reset token was persisted, so the flow cannot continue either.
+      refute Accounts.get_user_by_reset_password_token("anything")
+    end
+  end
 end

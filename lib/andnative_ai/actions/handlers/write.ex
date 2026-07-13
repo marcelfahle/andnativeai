@@ -10,7 +10,6 @@ defmodule AndnativeAi.Actions.Handlers.Write do
 
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Service
-  alias AndnativeAi.Runtime.OpenAIClient
   alias AndnativeAi.Skills
 
   @impl true
@@ -36,7 +35,7 @@ defmodule AndnativeAi.Actions.Handlers.Write do
            title: "Draft — #{String.slice(task, 0, 60)}",
            markdown: document(task, skill, draft_text, context),
            summary: summary_line(skill, context),
-           provider: "openai/#{model}",
+           provider: "#{AndnativeAi.Runtime.ModelPolicy.provider_for(model)}/#{model}",
            citations: Enum.map(context, & &1.citation_url)
          }}
 
@@ -65,14 +64,14 @@ defmodule AndnativeAi.Actions.Handlers.Write do
   end
 
   defp draft(task, skill, context, model) do
-    api_key = System.get_env("OPENAI_API_KEY", "")
+    # Provider routing (AAI-32): the model's provider decides the client
+    # and key; missing keys degrade to the handler's existing error path.
+    case AndnativeAi.Runtime.ModelPolicy.model_client(model) do
+      {:error, reason} ->
+        {:error, reason}
 
-    cond do
-      api_key == "" or String.contains?(api_key, "replace-me") ->
-        {:error, :missing_openai_api_key}
-
-      true ->
-        openai_client().response(%{
+      {:ok, client, api_key} ->
+        client.response(%{
           api_key: api_key,
           model: model,
           instructions: instructions(skill),
@@ -80,10 +79,6 @@ defmodule AndnativeAi.Actions.Handlers.Write do
           max_output_tokens: 900
         })
     end
-  end
-
-  defp openai_client do
-    Application.get_env(:andnative_ai, :openai_client, OpenAIClient)
   end
 
   defp instructions(nil) do

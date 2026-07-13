@@ -41,6 +41,12 @@ defmodule AndnativeAi.Runtime.AuditEventKinds do
       tone: :warning,
       category: :governance
     },
+    "platform_access" => %{
+      label: "Platform access",
+      icon: "hero-key",
+      tone: :warning,
+      category: :governance
+    },
     "model_policy_changed" => %{
       label: "Model policy changed",
       icon: "hero-cpu-chip",

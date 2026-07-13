@@ -35,6 +35,18 @@ SLUG="$1"
 DOMAIN="$2"
 ADMIN_EMAIL="$3"
 
+case "$DOMAIN" in
+  *[!a-z0-9.-]* | "" | .* | *. | *..* )
+    echo "error: domain must be a bare lowercase hostname (got '$DOMAIN')" >&2
+    exit 64
+    ;;
+  *.*) ;;
+  *)
+    echo "error: domain needs at least one dot (got '$DOMAIN')" >&2
+    exit 64
+    ;;
+esac
+
 case "$SLUG" in
   *[!a-z0-9-]* | "" | -* )
     echo "error: slug must be lowercase letters, digits, and dashes (got '$SLUG')" >&2
@@ -49,6 +61,22 @@ case "$ADMIN_EMAIL" in
     exit 64
     ;;
 esac
+
+# Platform staff seeded as superadmins in every appliance (AAI-34).
+PLATFORM1_EMAIL="${PLATFORM1_EMAIL:-m.fahle@gmail.com}"
+PLATFORM2_EMAIL="${PLATFORM2_EMAIL:-matthewosullivan87@gmail.com}"
+
+# A customer admin email colliding with a platform email would make the
+# two seed slots fight over one row. users.email is citext, so compare
+# case-insensitively — "M.Fahle@gmail.com" must still be caught.
+admin_email_lc="$(printf '%s' "$ADMIN_EMAIL" | tr '[:upper:]' '[:lower:]')"
+for platform_email in "$PLATFORM1_EMAIL" "$PLATFORM2_EMAIL"; do
+  platform_email_lc="$(printf '%s' "$platform_email" | tr '[:upper:]' '[:lower:]')"
+  if [ "$admin_email_lc" = "$platform_email_lc" ]; then
+    echo "error: admin email '$ADMIN_EMAIL' is a platform staff address" >&2
+    exit 64
+  fi
+done
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APPLIANCES_ROOT="${APPLIANCES_ROOT:-/opt/appliances}"
@@ -74,6 +102,8 @@ MINIO_ROOT_PASSWORD="$(openssl rand -hex 24)"
 CLOAK_KEY="$(openssl rand -base64 32)"
 # hex: fixed length, always clears the 12-char minimum password validation.
 ADMIN_PASSWORD="$(openssl rand -hex 10)"
+PLATFORM1_PASSWORD="$(openssl rand -hex 10)"
+PLATFORM2_PASSWORD="$(openssl rand -hex 10)"
 
 # Values reach python through the environment (never interpolated into
 # code — secrets and user input cannot break or inject the renderer), and
@@ -86,6 +116,10 @@ env TPL_DOMAIN="$DOMAIN" \
   TPL_CLOAK_KEY="$CLOAK_KEY" \
   TPL_ADMIN_EMAIL="$ADMIN_EMAIL" \
   TPL_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+  TPL_PLATFORM1_EMAIL="$PLATFORM1_EMAIL" \
+  TPL_PLATFORM1_PASSWORD="$PLATFORM1_PASSWORD" \
+  TPL_PLATFORM2_EMAIL="$PLATFORM2_EMAIL" \
+  TPL_PLATFORM2_PASSWORD="$PLATFORM2_PASSWORD" \
   TPL_REPO_DIR="$REPO_DIR" \
   TPL_CADDY_NETWORK="$CADDY_NETWORK" \
   python3 - "$TEMPLATE" "$BASE/.env" <<'PYEOF'
@@ -101,6 +135,10 @@ markers = [
     "CLOAK_KEY",
     "ADMIN_EMAIL",
     "ADMIN_PASSWORD",
+    "PLATFORM1_EMAIL",
+    "PLATFORM1_PASSWORD",
+    "PLATFORM2_EMAIL",
+    "PLATFORM2_PASSWORD",
     "REPO_DIR",
     "CADDY_NETWORK",
 ]
@@ -135,6 +173,10 @@ done
 if [ "${status:-}" != "healthy" ]; then
   echo "error: control-panel did not become healthy; inspect with:" >&2
   echo "       ${COMPOSE[*]} logs control-panel" >&2
+  echo "" >&2
+  echo "To retry from scratch (the already-provisioned guard will otherwise refuse):" >&2
+  echo "       ${COMPOSE[*]} down" >&2
+  echo "       mv '$BASE' '$BASE.failed.$(date +%s)'" >&2
   exit 1
 fi
 
@@ -148,20 +190,26 @@ $DOMAIN {
 }
 CADDYEOF
 
+if [ "${QUIET_CREDENTIALS:-false}" = "true" ]; then
+  credentials_line="stored in $BASE/.env (QUIET_CREDENTIALS — read them over SSH)"
+else
+  credentials_line="$ADMIN_PASSWORD   <- stored in $BASE/.env; rotate after first login"
+fi
+
 cat <<SUMMARY
 
 Appliance '$SLUG' is up.
 
   URL            https://$DOMAIN  (once the Caddy vhost is live)
   Admin login    $ADMIN_EMAIL
-  Admin password $ADMIN_PASSWORD   <- stored in $BASE/.env; rotate after first login
+  Admin password $credentials_line
   Compose        ${COMPOSE[*]}
 
 Go-live checklist:
   1. DNS: point $DOMAIN at this VM.
   2. Caddy: add $BASE/caddy.vhost to the Caddy config (it reaches the
      appliance over the '$CADDY_NETWORK' network) and reload Caddy.
-  3. Providers: set OPENAI_API_KEY (and research keys) in $BASE/.env,
+  3. Providers: set OPENAI_API_KEY (and ANTHROPIC_API_KEY / research keys) in $BASE/.env,
      then: ${COMPOSE[*]} up -d
   4. Slack: create the customer's Slack app, fill SLACK_* in $BASE/.env,
      connect via https://$DOMAIN/admin/slack.

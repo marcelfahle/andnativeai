@@ -85,7 +85,10 @@ defmodule AndnativeAiWeb.Admin.AgentsLiveTest do
   end
 
   test "superadmins see effective models and set audited policy", %{conn: conn, user: user} do
-    {:ok, _superadmin} = Accounts.set_user_role(user, "superadmin")
+    {:ok, superadmin} = Accounts.set_user_role(user, "superadmin")
+    # A role change invalidates sessions issued under the old role, so the
+    # promoted user re-authenticates.
+    conn = log_in_user(conn, superadmin)
     tenant = Memory.ensure_demo_tenant!()
 
     {:ok, agent} =

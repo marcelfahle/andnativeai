@@ -133,3 +133,19 @@ prod-ssh:
 # Open the live admin UI
 prod-open:
     open {{prod_url}}/admin/control-plane
+
+# --- Appliance fleet (phase A: script + workflow; see docs/provisioning.md) ---
+
+# List provisioned appliances on the box (directory scan — not fleet.yml)
+appliance-ls:
+    ssh {{prod_host}} 'ls -1 /opt/appliances 2>/dev/null || echo "(no appliances provisioned)"'
+
+# Upgrade one appliance after main moved: re-copy the canonical compose
+# topology from the updated repo checkout, then rebuild and restart.
+# Per-appliance state lives only in its .env (new template variables
+# need a manual .env edit — see docs/provisioning.md).
+appliance-upgrade slug:
+    ssh {{prod_host}} 'set -eu; \
+      cp {{prod_dir}}/deploy/appliance.compose.yml /opt/appliances/{{slug}}/compose.yml; \
+      docker compose -p andnative-{{slug}} --env-file /opt/appliances/{{slug}}/.env \
+        -f /opt/appliances/{{slug}}/compose.yml up -d --build --wait'

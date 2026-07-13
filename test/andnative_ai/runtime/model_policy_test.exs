@@ -81,4 +81,14 @@ defmodule AndnativeAi.Runtime.ModelPolicyTest do
     assert event.metadata["model"] == "gpt-5.6-terra"
     assert event.metadata["overrides"] == %{"write" => "claude-opus-4-8"}
   end
+
+  describe "provider_for/1" do
+    test "claude models route to anthropic, everything else to openai" do
+      assert ModelPolicy.provider_for("claude-opus-4-8") == :anthropic
+      assert ModelPolicy.provider_for("claude-sonnet-5") == :anthropic
+      assert ModelPolicy.provider_for("gpt-5.6-terra") == :openai
+      assert ModelPolicy.provider_for("o4-mini") == :openai
+      assert ModelPolicy.provider_for(nil) == :openai
+    end
+  end
 end

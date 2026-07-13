@@ -42,6 +42,15 @@ defmodule AndnativeAi.Accounts do
   end
 
   @doc """
+  Lists the users a customer admin manages. Platform superadmin accounts
+  are invisible here by design (AAI-34): customers run their own user
+  management; platform access shows up on the audit trail instead.
+  """
+  def list_customer_users do
+    Repo.all(from u in exclude_superadmins(User), order_by: [asc: u.email])
+  end
+
+  @doc """
   Gets a single user, or `nil` when the id is unknown or not a valid id.
   """
   def get_user(id) do
@@ -75,9 +84,27 @@ defmodule AndnativeAi.Accounts do
   deliberately no customer-facing UI for granting superadmin.
   """
   def set_user_role(%User{} = user, role) do
-    user
-    |> User.role_changeset(%{role: role})
-    |> Repo.update()
+    changeset = User.role_changeset(user, %{role: role})
+
+    # A role change must not travel on credentials issued under the old
+    # role: when the role actually changes, every live session, reset link,
+    # and invite stub for this user dies in the same transaction.
+    multi =
+      Ecto.Multi.new()
+      |> Ecto.Multi.update(:user, changeset)
+      |> Ecto.Multi.run(:tokens, fn repo, %{user: updated} ->
+        if updated.role == user.role do
+          {:ok, 0}
+        else
+          {count, _} = repo.delete_all(UserToken.by_user_and_contexts_query(user, :all))
+          {:ok, count}
+        end
+      end)
+
+    case Repo.transaction(multi) do
+      {:ok, %{user: updated}} -> {:ok, updated}
+      {:error, :user, changeset, _changes} -> {:error, changeset}
+    end
   end
 
   @doc """
@@ -148,6 +175,15 @@ defmodule AndnativeAi.Accounts do
   Delivers reset-password instructions for the given user. The caller must not
   reveal whether an email exists (no enumeration).
   """
+  # Platform superadmin accounts use fixed emails across every appliance,
+  # so the public self-serve reset flow would turn one compromised inbox
+  # into fleet-wide superadmin access. Rotation happens out of band via
+  # Release.rotate_superadmin_password/1. Callers show the same generic
+  # message either way, so this leaks nothing about the account.
+  def deliver_user_reset_password_instructions(%User{role: "superadmin"}, _url_fun) do
+    {:error, :superadmin_reset_disabled}
+  end
+
   def deliver_user_reset_password_instructions(%User{} = user, reset_password_url_fun)
       when is_function(reset_password_url_fun, 1) do
     {encoded_token, user_token} = UserToken.build_email_token(user, "reset_password")
@@ -180,8 +216,19 @@ defmodule AndnativeAi.Accounts do
   password and an unset `confirmed_at`, then emails an activation link. The
   invitee sets their real password via `accept_invitation/2`.
   """
+  # A superadmin's email must be as invisible here as it is in the user
+  # list: a unique-constraint error would otherwise confirm the hidden
+  # account exists. Report the same success the caller shows for a fresh
+  # invite, and deliver nothing.
   def invite_user(email, invite_url_fun) when is_function(invite_url_fun, 1) do
-    random_password = Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
+    case get_user_by_email(email) do
+      %User{role: "superadmin"} = user -> {:ok, user}
+      _other -> do_invite_user(email, invite_url_fun)
+    end
+  end
+
+  defp do_invite_user(email, invite_url_fun) do
+    random_password = generate_random_password()
 
     # Insert directly (not register_user) so the invite stub stays unconfirmed
     # (confirmed_at: nil) until the invitee accepts.
@@ -257,13 +304,28 @@ defmodule AndnativeAi.Accounts do
   end
 
   def delete_user(%User{} = user) do
-    active_count = Repo.aggregate(from(u in User, where: not is_nil(u.confirmed_at)), :count)
+    # Superadmins are excluded so platform accounts never mask the fact
+    # that a customer is about to delete their own last admin.
+    active_count =
+      Repo.aggregate(
+        from(u in exclude_superadmins(User), where: not is_nil(u.confirmed_at)),
+        :count
+      )
 
     if active_count <= 1 do
       {:error, :last_user}
     else
       Repo.delete(user)
     end
+  end
+
+  defp exclude_superadmins(query) do
+    from u in query, where: u.role != "superadmin"
+  end
+
+  @doc "Generates an unguessable password (invite stubs, superadmin rotation)."
+  def generate_random_password do
+    Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
   end
 
   ## Internal helpers

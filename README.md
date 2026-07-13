@@ -67,7 +67,9 @@ flows use these values:
   and scripts.
 - `SLACK_SIGNING_SECRET`: reserved for future HTTP Slack endpoints; not used by
   current Socket Mode.
-- `OPENAI_API_KEY` or a future provider-specific LLM/embedding key
+- `OPENAI_API_KEY` for answers, drafting, classification, and embeddings
+- `ANTHROPIC_API_KEY` when an agent's model policy pins a `claude-*` model
+  (chat and `write:` route by provider; classify/situate stay on OpenAI)
 - `PERPLEXITY_API_KEY` (or `GEMINI_API_KEY`) for the `research:` deep-research
   action; without one, research actions fail with a clear reason
 - `OPENCLAW_GATEWAY_URL` and `OPENCLAW_WORKSPACE_PATH`

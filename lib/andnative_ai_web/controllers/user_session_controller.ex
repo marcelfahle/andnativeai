@@ -1,6 +1,8 @@
 defmodule AndnativeAiWeb.UserSessionController do
   use AndnativeAiWeb, :controller
 
+  require Logger
+
   alias AndnativeAi.Accounts
   alias AndnativeAiWeb.UserAuth
 
@@ -16,6 +18,8 @@ defmodule AndnativeAiWeb.UserSessionController do
   defp create(conn, %{"user" => %{"email" => email, "password" => password}}, info)
        when is_binary(email) and is_binary(password) do
     if user = Accounts.get_user_by_email_and_password(email, password) do
+      record_platform_access(user)
+
       conn
       |> put_flash(:info, info)
       |> UserAuth.log_in_user(user)
@@ -35,6 +39,31 @@ defmodule AndnativeAiWeb.UserSessionController do
     |> put_flash(:error, "Invalid email or password")
     |> redirect(to: ~p"/login")
   end
+
+  # Platform staff are hidden from customer user management (AAI-34), so
+  # their access must be visible where it matters: the governance trail.
+  # Auditing is best-effort end to end — the tenant lookup is inside the
+  # rescue too, so no failure here can ever break a login.
+  defp record_platform_access(%{role: "superadmin"} = user) do
+    tenant = AndnativeAi.Memory.ensure_demo_tenant!()
+
+    AndnativeAi.Runtime.Audit.record_best_effort(%{
+      tenant_id: tenant.id,
+      event_kind: "platform_access",
+      component: "control_panel",
+      actor: user.email,
+      status: "signed_in",
+      summary: "Platform staff #{user.email} signed in.",
+      metadata: %{role: user.role},
+      occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+  rescue
+    error ->
+      Logger.warning("Could not record platform access: #{Exception.message(error)}")
+      :ok
+  end
+
+  defp record_platform_access(_user), do: :ok
 
   def delete(conn, _params) do
     conn

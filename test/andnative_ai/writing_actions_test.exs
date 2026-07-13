@@ -198,4 +198,125 @@ defmodule AndnativeAi.WritingActionsTest do
   defp perform_job(worker, args) do
     worker.perform(%Oban.Job{args: args})
   end
+
+  defp restore_env(key, nil), do: System.delete_env(key)
+  defp restore_env(key, value), do: System.put_env(key, value)
+
+  describe "provider routing (AAI-32)" do
+    defmodule FakeAnthropic do
+      def response(request) do
+        send(
+          Application.fetch_env!(:andnative_ai, :test_notify_pid),
+          {:anthropic_request, request}
+        )
+
+        {:ok, "Claude-drafted copy."}
+      end
+    end
+
+    test "a claude-* write override routes to the anthropic client", %{
+      tenant: tenant,
+      agent: agent
+    } do
+      previous_key = System.get_env("ANTHROPIC_API_KEY")
+      System.put_env("ANTHROPIC_API_KEY", "sk-ant-test")
+      Application.put_env(:andnative_ai, :anthropic_client, FakeAnthropic)
+
+      on_exit(fn ->
+        restore_env("ANTHROPIC_API_KEY", previous_key)
+        Application.delete_env(:andnative_ai, :anthropic_client)
+      end)
+
+      {:ok, _agent} =
+        Memory.update_agent_model_policy(agent, %{
+          "model_policy" => %{"write" => "claude-opus-4-8"}
+        })
+
+      {:ok, action} =
+        Actions.request_action(tenant.id, %{
+          kind: "write",
+          agent_id: agent.id,
+          input_summary: "landing page",
+          input: %{"argument" => "landing page for launch"},
+          request_id: "req-anthropic-1",
+          slack_channel_id: "CWRITE",
+          slack_thread_ts: "1710000000.000800"
+        })
+
+      {:ok, _} = Actions.approve_action(tenant.id, action.id, "marcel@example.com")
+      assert %{success: 1} = Oban.drain_queue(queue: :actions)
+
+      assert_received {:anthropic_request, request}
+      assert request.model == "claude-opus-4-8"
+      assert request.api_key == "sk-ant-test"
+
+      completed = Actions.get_action!(tenant.id, action.id)
+      assert completed.status == "completed"
+      assert completed.provider == "anthropic/claude-opus-4-8"
+    end
+
+    test "a claude-* override with a placeholder anthropic key degrades like a missing one", %{
+      tenant: tenant,
+      agent: agent
+    } do
+      previous_key = System.get_env("ANTHROPIC_API_KEY")
+      System.put_env("ANTHROPIC_API_KEY", "replace-me")
+      on_exit(fn -> restore_env("ANTHROPIC_API_KEY", previous_key) end)
+
+      {:ok, _agent} =
+        Memory.update_agent_model_policy(agent, %{
+          "model_policy" => %{"write" => "claude-opus-4-8"}
+        })
+
+      {:ok, action} =
+        Actions.request_action(tenant.id, %{
+          kind: "write",
+          agent_id: agent.id,
+          input_summary: "landing page",
+          input: %{"argument" => "landing page for launch"},
+          request_id: "req-anthropic-3",
+          slack_channel_id: "CWRITE",
+          slack_thread_ts: "1710000000.001000"
+        })
+
+      {:ok, _} = Actions.approve_action(tenant.id, action.id, "marcel@example.com")
+      Oban.drain_queue(queue: :actions)
+
+      failed = Actions.get_action!(tenant.id, action.id)
+      refute failed.status == "completed"
+      assert failed.error =~ "placeholder_anthropic_api_key"
+    end
+
+    test "a claude-* override with no anthropic key degrades honestly", %{
+      tenant: tenant,
+      agent: agent
+    } do
+      previous_key = System.get_env("ANTHROPIC_API_KEY")
+      System.delete_env("ANTHROPIC_API_KEY")
+      on_exit(fn -> restore_env("ANTHROPIC_API_KEY", previous_key) end)
+
+      {:ok, _agent} =
+        Memory.update_agent_model_policy(agent, %{
+          "model_policy" => %{"write" => "claude-opus-4-8"}
+        })
+
+      {:ok, action} =
+        Actions.request_action(tenant.id, %{
+          kind: "write",
+          agent_id: agent.id,
+          input_summary: "landing page",
+          input: %{"argument" => "landing page for launch"},
+          request_id: "req-anthropic-2",
+          slack_channel_id: "CWRITE",
+          slack_thread_ts: "1710000000.000900"
+        })
+
+      {:ok, _} = Actions.approve_action(tenant.id, action.id, "marcel@example.com")
+      Oban.drain_queue(queue: :actions)
+
+      failed = Actions.get_action!(tenant.id, action.id)
+      refute failed.status == "completed"
+      assert failed.error =~ "missing_anthropic_api_key"
+    end
+  end
 end

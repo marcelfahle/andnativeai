@@ -3,6 +3,7 @@ defmodule AndnativeAiWeb.Admin.UsersLiveTest do
 
   import Phoenix.LiveViewTest
   import AndnativeAi.AccountsFixtures
+  import Swoosh.TestAssertions
 
   alias AndnativeAi.Accounts
 
@@ -73,5 +74,46 @@ defmodule AndnativeAiWeb.Admin.UsersLiveTest do
 
     assert has_element?(lv, "#flash-group", "can't delete your own account")
     assert Accounts.get_user_by_email(admin.email)
+  end
+
+  describe "platform superadmin invisibility (AAI-34)" do
+    setup :register_and_log_in_user
+
+    test "superadmin rows never render and events targeting them are no-ops", %{conn: conn} do
+      {:ok, superadmin} =
+        AndnativeAi.Accounts.set_user_role(
+          user_fixture(%{email: "platform@andnative.ai"}),
+          "superadmin"
+        )
+
+      {:ok, view, html} = live(conn, ~p"/admin/users")
+
+      refute html =~ "platform@andnative.ai"
+
+      # Crafted events against the hidden account must be no-ops — and answer
+      # exactly like a missing user, so nothing is enumerable.
+      render_click(view, "delete", %{"id" => to_string(superadmin.id)})
+      assert AndnativeAi.Accounts.get_user(superadmin.id)
+
+      html = render_click(view, "resend", %{"id" => to_string(superadmin.id)})
+      assert html =~ "That user no longer exists."
+      assert_no_email_sent()
+    end
+
+    test "inviting a platform email never reveals the hidden account", %{conn: conn} do
+      {:ok, superadmin} =
+        AndnativeAi.Accounts.set_user_role(
+          user_fixture(%{email: "hidden@andnative.ai"}),
+          "superadmin"
+        )
+
+      # Same shape as a fresh invite (no unique-constraint error to read),
+      # and nothing is delivered.
+      assert {:ok, returned} =
+               AndnativeAi.Accounts.invite_user("hidden@andnative.ai", &"http://x/#{&1}")
+
+      assert returned.id == superadmin.id
+      assert_no_email_sent()
+    end
   end
 end

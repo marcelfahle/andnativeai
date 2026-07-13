@@ -1,0 +1,105 @@
+name: Provision Appliance
+
+# Phase A of the fleet console (AAI-33): GitHub's dispatch form is the
+# provisioning UI. Every run is attributable and logged; the SSH trust
+# path is the same key the deploy workflow already uses.
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Appliance slug (lowercase letters, digits, dashes)"
+        required: true
+      domain:
+        description: "Appliance domain (e.g. acme.andnativeai.marcelfahle.net)"
+        required: true
+      admin_email:
+        description: "Customer first-admin email"
+        required: true
+
+concurrency:
+  group: provision-appliance
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    # Cold image build + 5-minute health wait can exceed the deploy
+    # workflow's 20 minutes.
+    timeout-minutes: 30
+
+    env:
+      DEPLOY_HOST: 91.99.49.152
+      DEPLOY_USER: andnative-deploy
+      DEPLOY_PATH: /opt/andnativeai
+      # Inputs travel to the remote script as env vars, never inline
+      # shell interpolation.
+      APPLIANCE_SLUG: ${{ inputs.slug }}
+      APPLIANCE_DOMAIN: ${{ inputs.domain }}
+      APPLIANCE_ADMIN_EMAIL: ${{ inputs.admin_email }}
+
+    # Default GHA shell is `bash -e {0}` (no pipefail), so a failed remote
+    # command piped into tee would report tee's exit 0 — a green run over a
+    # broken appliance. Force pipefail for every run step.
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install deploy SSH key
+        run: |
+          test -n "${{ secrets.HETZNER_DEPLOY_SSH_KEY }}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.HETZNER_DEPLOY_SSH_KEY }}" > ~/.ssh/andnative_deploy
+          chmod 600 ~/.ssh/andnative_deploy
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Provision appliance
+        run: |
+          ssh -i ~/.ssh/andnative_deploy -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "APPLIANCE_SLUG=$(printf '%q' "$APPLIANCE_SLUG")" \
+            "APPLIANCE_DOMAIN=$(printf '%q' "$APPLIANCE_DOMAIN")" \
+            "APPLIANCE_ADMIN_EMAIL=$(printf '%q' "$APPLIANCE_ADMIN_EMAIL")" \
+            'bash -s' <<'REMOTE' 2>&1 | tee provision.log
+          set -euo pipefail
+
+          # The box copy of the script is updated only by deploy-main's rsync
+          # on push to main. Dispatching before that lands (pre-merge, or a
+          # lagging/failed deploy) would run an old script whose summary can
+          # print the generated password. Refuse unless the box script knows
+          # QUIET_CREDENTIALS.
+          if ! grep -q QUIET_CREDENTIALS /opt/andnativeai/scripts/provision-appliance.sh; then
+            echo "box provision script predates QUIET_CREDENTIALS; deploy main first" >&2
+            exit 1
+          fi
+
+          # Fail fast if the deploy user cannot create appliances at all.
+          APPLIANCES_ROOT="${APPLIANCES_ROOT:-/opt/appliances}"
+          if [ ! -d "$APPLIANCES_ROOT" ] || [ ! -w "$APPLIANCES_ROOT" ]; then
+            echo "error: $APPLIANCES_ROOT missing or not writable by $(whoami)." >&2
+            echo "       One-time setup: sudo mkdir -p $APPLIANCES_ROOT && sudo chown $(whoami) $APPLIANCES_ROOT" >&2
+            exit 1
+          fi
+
+          # QUIET_CREDENTIALS: generated passwords stay in the appliance
+          # .env; nothing in this log carries a secret.
+          QUIET_CREDENTIALS=true /opt/andnativeai/scripts/provision-appliance.sh \
+            "$APPLIANCE_SLUG" "$APPLIANCE_DOMAIN" "$APPLIANCE_ADMIN_EMAIL"
+          REMOTE
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "## Appliance provisioning: ${APPLIANCE_SLUG}"
+            echo ""
+            echo '```'
+            tail -n 40 provision.log 2>/dev/null || echo "(no output captured)"
+            echo '```'
+            echo ""
+            echo "Credentials live only in /opt/appliances/${APPLIANCE_SLUG}/.env on the box."
+          } >> "$GITHUB_STEP_SUMMARY"
