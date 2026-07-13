@@ -100,6 +100,7 @@ SECRET_KEY_BASE="$(openssl rand -base64 48 | tr -d '\n')"
 POSTGRES_PASSWORD="$(openssl rand -hex 24)"
 MINIO_ROOT_PASSWORD="$(openssl rand -hex 24)"
 CLOAK_KEY="$(openssl rand -base64 32)"
+MEMORY_TOOL_TOKEN="$(openssl rand -hex 24)"
 # hex: fixed length, always clears the 12-char minimum password validation.
 ADMIN_PASSWORD="$(openssl rand -hex 10)"
 PLATFORM1_PASSWORD="$(openssl rand -hex 10)"
@@ -114,6 +115,7 @@ env TPL_DOMAIN="$DOMAIN" \
   TPL_POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
   TPL_MINIO_ROOT_PASSWORD="$MINIO_ROOT_PASSWORD" \
   TPL_CLOAK_KEY="$CLOAK_KEY" \
+  TPL_MEMORY_TOOL_TOKEN="$MEMORY_TOOL_TOKEN" \
   TPL_ADMIN_EMAIL="$ADMIN_EMAIL" \
   TPL_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
   TPL_PLATFORM1_EMAIL="$PLATFORM1_EMAIL" \
@@ -133,6 +135,7 @@ markers = [
     "POSTGRES_PASSWORD",
     "MINIO_ROOT_PASSWORD",
     "CLOAK_KEY",
+    "MEMORY_TOOL_TOKEN",
     "ADMIN_EMAIL",
     "ADMIN_PASSWORD",
     "PLATFORM1_EMAIL",
