@@ -429,4 +429,27 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
   end
 
   defp event_kinds(events), do: Enum.map(events, & &1.event_kind)
+
+  test "a claude-routed chat model with no anthropic key falls back honestly" do
+    {tenant, agent} = agent_fixture("anthropic-fallback")
+    {:ok, agent} = Memory.update_agent_model_policy(agent, %{"model" => "claude-opus-4-8"})
+    ingest_refund_memory(tenant)
+    System.delete_env("ANTHROPIC_API_KEY")
+
+    assert {:ok, response} =
+             OpenClaw.dispatch_mention(agent, %{
+               "type" => "app_mention",
+               "text" => "<@UBOT> How do refund approvals work?"
+             })
+
+    # KTD8: identical to the OpenAI missing-key path — deterministic
+    # fallback with fallback_reason, and NO runtime_error event.
+    assert response.answer =~ "Refund approvals"
+
+    events = runtime_events(tenant.id, response.request_id)
+    answer_event = Enum.find(events, &(&1.event_kind == "answer_generated"))
+    assert answer_event.metadata["generation_mode"] == "fallback"
+    assert answer_event.metadata["fallback_reason"] =~ "missing_anthropic_api_key"
+    refute Enum.any?(events, &(&1.event_kind == "runtime_error"))
+  end
 end

@@ -254,7 +254,7 @@ defmodule AndnativeAiWeb.Admin.AgentsLive do
                 <div>
                   <h2 class="text-base font-semibold">Model policy — {@policy_agent.name}</h2>
                   <p class="mt-1 text-xs text-base-content/60">
-                    Platform staff only (OpenAI model IDs for now). Changes are recorded on the governance trail.
+                    Platform staff only. Chat and write route to Anthropic for claude-* models; classify/situate remain OpenAI-only. Changes are recorded on the governance trail.
                   </p>
                 </div>
                 <button id="close-policy" class="btn btn-ghost btn-xs" phx-click="close-policy">

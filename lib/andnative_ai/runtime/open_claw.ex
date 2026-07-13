@@ -3,7 +3,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
 
   alias AndnativeAi.Memory
   alias AndnativeAi.Memory.Agent
-  alias AndnativeAi.Runtime.{Audit, MemoryTool, ModelPolicy, OpenAIClient}
+  alias AndnativeAi.Runtime.{Audit, MemoryTool, ModelPolicy}
   alias AndnativeAi.Skills
 
   @impl true
@@ -125,25 +125,25 @@ defmodule AndnativeAi.Runtime.OpenClaw do
   end
 
   defp model_response(agent, question, results, skills) do
-    api_key = System.get_env("OPENAI_API_KEY", "")
+    resolved_model = model(agent)
 
-    cond do
-      api_key == "" ->
-        {:error, :missing_openai_api_key}
+    # Model policy decides the provider (AAI-32); a missing or placeholder
+    # key short-circuits to the deterministic fallback exactly like the
+    # original OpenAI path — fallback_reason metadata, no runtime_error.
+    case ModelPolicy.model_client(resolved_model) do
+      {:error, reason} ->
+        {:error, reason}
 
-      String.contains?(api_key, "replace-me") ->
-        {:error, :placeholder_openai_api_key}
-
-      true ->
+      {:ok, client, api_key} ->
         request = %{
           api_key: api_key,
-          model: model(agent),
+          model: resolved_model,
           instructions: model_instructions(agent) <> skills_instructions(skills),
           input: model_input(question, results),
           max_output_tokens: 240
         }
 
-        case openai_client().response(request) do
+        case client.response(request) do
           {:ok, text} -> {:ok, text}
           {:error, reason} -> {:error, {:model_error, reason}}
         end
@@ -359,10 +359,6 @@ defmodule AndnativeAi.Runtime.OpenClaw do
       summary: "#{agent.name} runtime dispatch failed.",
       metadata: %{reason: Audit.reason_summary(reason)}
     })
-  end
-
-  defp openai_client do
-    Application.get_env(:andnative_ai, :openai_client, OpenAIClient)
   end
 
   defp question_from_event(%{"text" => text}) do

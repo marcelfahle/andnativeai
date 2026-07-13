@@ -206,7 +206,7 @@ Go-live checklist:
   1. DNS: point $DOMAIN at this VM.
   2. Caddy: add $BASE/caddy.vhost to the Caddy config (it reaches the
      appliance over the '$CADDY_NETWORK' network) and reload Caddy.
-  3. Providers: set OPENAI_API_KEY (and research keys) in $BASE/.env,
+  3. Providers: set OPENAI_API_KEY (and ANTHROPIC_API_KEY / research keys) in $BASE/.env,
      then: ${COMPOSE[*]} up -d
   4. Slack: create the customer's Slack app, fill SLACK_* in $BASE/.env,
      connect via https://$DOMAIN/admin/slack.
