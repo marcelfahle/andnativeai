@@ -87,11 +87,7 @@ defmodule AndnativeAi.Runtime.OpenClaw do
       model: ModelPolicy.resolve(agent, :chat),
       runtime: "openclaw",
       mcp_servers: %{
-        andnative_memory: %{
-          transport: "http",
-          url: memory_tool_url(),
-          tools: [MemoryTool.schema()]
-        }
+        andnative_memory: memory_server_config()
       },
       instructions: [
         "Use memory_search before answering Slack questions.",
@@ -385,5 +381,22 @@ defmodule AndnativeAi.Runtime.OpenClaw do
 
   defp memory_tool_url do
     System.get_env("MEMORY_TOOL_URL", "http://control-panel:4000/api/memory/search")
+  end
+
+  # The memory API is token-guarded (MemoryApiAuth). Carry the credential
+  # so a gateway reading this config can authenticate; when no token is
+  # configured, omit the header entirely rather than emitting a bare
+  # "Bearer " that would look like a credential and 401 confusingly.
+  defp memory_server_config do
+    base = %{
+      transport: "http",
+      url: memory_tool_url(),
+      tools: [MemoryTool.schema()]
+    }
+
+    case System.get_env("MEMORY_TOOL_TOKEN", "") do
+      "" -> base
+      token -> Map.put(base, :headers, %{"authorization" => "Bearer " <> token})
+    end
   end
 end
