@@ -36,12 +36,17 @@ defmodule AndnativeAiWeb.Admin.UserInviteLive do
   end
 
   def handle_event("invite", %{"user" => %{"email" => email}}, socket) do
-    case Accounts.invite_user(email, &url(~p"/users/invite/#{&1}")) do
+    case Accounts.invite_user(email, &url(~p"/users/invite/#{&1}"),
+           actor: socket.assigns.current_user
+         ) do
       {:ok, user} ->
         {:noreply,
          socket
          |> put_flash(:info, "Invitation sent to #{user.email}.")
          |> assign(form: to_form(%{}, as: "user"))}
+
+      {:error, :already_active_superadmin} ->
+        {:noreply, put_flash(socket, :error, "That address is already a platform account.")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset, as: "user", action: :insert))}
