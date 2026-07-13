@@ -19,6 +19,7 @@ services:
       PORT: 4000
       MINIO_ENDPOINT: http://minio:9000
       REDIS_URL: redis://redis:6379/0
+      MEMORY_TOOL_TOKEN: ${MEMORY_TOOL_TOKEN:?Set MEMORY_TOOL_TOKEN in .env}
       RAW_SOURCES_PATH: /app/var/sources
       OPENCLAW_WORKSPACE_PATH: /app/var/openclaw
     volumes:
@@ -62,6 +63,7 @@ services:
       PHX_HOST: andnativeai.marcelfahle.net
       MINIO_ENDPOINT: http://minio:9000
       REDIS_URL: redis://redis:6379/0
+      MEMORY_TOOL_TOKEN: ${MEMORY_TOOL_TOKEN:?Set MEMORY_TOOL_TOKEN in .env}
       RAW_SOURCES_PATH: /app/var/sources
       OPENCLAW_WORKSPACE_PATH: /app/var/openclaw
     restart: unless-stopped

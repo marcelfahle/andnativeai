@@ -17,6 +17,11 @@ defmodule AndnativeAiWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # The memory API returns governed memory content; it is never public.
+  pipeline :memory_api do
+    plug AndnativeAiWeb.Plugs.MemoryApiAuth
+  end
+
   ## Public routes (no authentication required)
 
   scope "/", AndnativeAiWeb do
@@ -74,7 +79,7 @@ defmodule AndnativeAiWeb.Router do
   end
 
   scope "/api", AndnativeAiWeb do
-    pipe_through :api
+    pipe_through [:api, :memory_api]
 
     post "/memory/search", Api.MemoryController, :search
   end
