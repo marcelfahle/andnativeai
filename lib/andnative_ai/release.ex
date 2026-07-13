@@ -153,7 +153,7 @@ defmodule AndnativeAi.Release do
     with_task_env(fn _repo ->
       case AndnativeAi.Accounts.get_user_by_email(email) do
         %{role: "superadmin"} = user ->
-          new_password = 24 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+          new_password = AndnativeAi.Accounts.generate_random_password()
 
           case AndnativeAi.Accounts.reset_user_password(user, %{password: new_password}) do
             {:ok, _user} ->

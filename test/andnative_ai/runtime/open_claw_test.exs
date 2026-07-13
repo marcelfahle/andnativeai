@@ -434,7 +434,10 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
     {tenant, agent} = agent_fixture("anthropic-fallback")
     {:ok, agent} = Memory.update_agent_model_policy(agent, %{"model" => "claude-opus-4-8"})
     ingest_refund_memory(tenant)
+
+    previous_key = System.get_env("ANTHROPIC_API_KEY")
     System.delete_env("ANTHROPIC_API_KEY")
+    on_exit(fn -> if previous_key, do: System.put_env("ANTHROPIC_API_KEY", previous_key) end)
 
     assert {:ok, response} =
              OpenClaw.dispatch_mention(agent, %{

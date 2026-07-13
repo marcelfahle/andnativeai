@@ -54,26 +54,33 @@ defmodule AndnativeAi.Runtime.ModelPolicy do
   """
   def model_client(model) do
     case provider_for(model) do
-      :anthropic -> client_for(:anthropic, "ANTHROPIC_API_KEY", :anthropic_client)
-      :openai -> client_for(:openai, "OPENAI_API_KEY", :openai_client)
+      :anthropic ->
+        client_for(
+          "ANTHROPIC_API_KEY",
+          :anthropic_client,
+          AndnativeAi.Runtime.AnthropicClient,
+          :missing_anthropic_api_key,
+          :placeholder_anthropic_api_key
+        )
+
+      :openai ->
+        client_for(
+          "OPENAI_API_KEY",
+          :openai_client,
+          AndnativeAi.Runtime.OpenAIClient,
+          :missing_openai_api_key,
+          :placeholder_openai_api_key
+        )
     end
   end
 
-  defp client_for(provider, key_env, client_env) do
+  defp client_for(key_env, client_env, default_client, missing_error, placeholder_error) do
     api_key = System.get_env(key_env, "")
 
     cond do
-      api_key == "" ->
-        {:error, :"missing_#{key_env |> String.downcase()}"}
-
-      String.contains?(api_key, "replace-me") ->
-        {:error, :"placeholder_#{key_env |> String.downcase()}"}
-
-      true ->
-        {:ok, Application.get_env(:andnative_ai, client_env, default_client(provider)), api_key}
+      api_key == "" -> {:error, missing_error}
+      String.contains?(api_key, "replace-me") -> {:error, placeholder_error}
+      true -> {:ok, Application.get_env(:andnative_ai, client_env, default_client), api_key}
     end
   end
-
-  defp default_client(:anthropic), do: AndnativeAi.Runtime.AnthropicClient
-  defp default_client(:openai), do: AndnativeAi.Runtime.OpenAIClient
 end

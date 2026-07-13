@@ -166,8 +166,9 @@ Behavior:
   `digest:` on-demand weekly digest). Unmatched mentions fall through to
   the normal governed-memory answer.
 - `write:` composes an enabled skill (HOW) with governed memory (WHAT —
-  preferring a `product` collection when one exists), drafts via the
-  configured OpenAI model, cites the memory used, and records
+  preferring a `product` collection when one exists), drafts via the model
+  the agent's policy resolves (Anthropic for `claude-*` overrides, OpenAI
+  otherwise), cites the memory used, and records
   `skill_used` on the trace. Approval-gated: the output is
   outward-facing.
 - A weekly digest (Oban cron, Monday 08:00 UTC) posts what entered

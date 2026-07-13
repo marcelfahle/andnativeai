@@ -368,6 +368,17 @@ defmodule AndnativeAi.AccountsTest do
       assert {:error, :last_user} = Accounts.delete_user(admin)
     end
 
+    test "a role change invalidates sessions, reset links, and invites" do
+      user = user_fixture()
+      token = Accounts.generate_user_session_token(user)
+      assert Accounts.get_user_by_session_token(token)
+
+      {:ok, _superadmin} = Accounts.set_user_role(user, "superadmin")
+
+      # Credentials issued under the old role must not survive the elevation.
+      refute Accounts.get_user_by_session_token(token)
+    end
+
     test "superadmins are excluded from self-serve password reset delivery" do
       {:ok, superadmin} = Accounts.set_user_role(user_fixture(), "superadmin")
 

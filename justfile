@@ -148,4 +148,4 @@ appliance-upgrade slug:
     ssh {{prod_host}} 'set -eu; \
       cp {{prod_dir}}/deploy/appliance.compose.yml /opt/appliances/{{slug}}/compose.yml; \
       docker compose -p andnative-{{slug}} --env-file /opt/appliances/{{slug}}/.env \
-        -f /opt/appliances/{{slug}}/compose.yml up -d --build'
+        -f /opt/appliances/{{slug}}/compose.yml up -d --build --wait'

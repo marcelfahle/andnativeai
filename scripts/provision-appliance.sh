@@ -67,9 +67,12 @@ PLATFORM1_EMAIL="${PLATFORM1_EMAIL:-m.fahle@gmail.com}"
 PLATFORM2_EMAIL="${PLATFORM2_EMAIL:-matthewosullivan87@gmail.com}"
 
 # A customer admin email colliding with a platform email would make the
-# two seed slots fight over one row; refuse up front.
+# two seed slots fight over one row. users.email is citext, so compare
+# case-insensitively — "M.Fahle@gmail.com" must still be caught.
+admin_email_lc="$(printf '%s' "$ADMIN_EMAIL" | tr '[:upper:]' '[:lower:]')"
 for platform_email in "$PLATFORM1_EMAIL" "$PLATFORM2_EMAIL"; do
-  if [ "$ADMIN_EMAIL" = "$platform_email" ]; then
+  platform_email_lc="$(printf '%s' "$platform_email" | tr '[:upper:]' '[:lower:]')"
+  if [ "$admin_email_lc" = "$platform_email_lc" ]; then
     echo "error: admin email '$ADMIN_EMAIL' is a platform staff address" >&2
     exit 64
   fi

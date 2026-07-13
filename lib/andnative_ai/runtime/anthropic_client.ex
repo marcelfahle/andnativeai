@@ -27,6 +27,7 @@ defmodule AndnativeAi.Runtime.AnthropicClient do
       json: body,
       receive_timeout: 20_000
     ]
+    |> Keyword.merge(Application.get_env(:andnative_ai, :anthropic_req_options, []))
     |> Req.request()
     |> case do
       {:ok, %{status: 200, body: %{"content" => content}}} when is_list(content) ->

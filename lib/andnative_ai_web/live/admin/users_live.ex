@@ -2,6 +2,14 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
   use AndnativeAiWeb, :live_view
 
   alias AndnativeAi.Accounts
+  alias AndnativeAi.Accounts.User
+
+  # Superadmin rows never render on this page, but event payloads are
+  # user-controlled input — every targeted event is denied through this
+  # one predicate.
+  defp hidden_from_customer_admin?(user) do
+    is_nil(user) or User.superadmin?(user)
+  end
 
   def render(assigns) do
     ~H"""
@@ -69,7 +77,7 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
 
     socket =
       cond do
-        is_nil(user) or user.role == "superadmin" ->
+        hidden_from_customer_admin?(user) ->
           put_flash(socket, :error, "That user no longer exists.")
 
         user.id == socket.assigns.current_user.id ->
@@ -94,13 +102,14 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
   end
 
   def handle_event("resend", %{"id" => id}, socket) do
+    user = Accounts.get_user(id)
+
     socket =
-      case Accounts.get_user(id) do
-        # Superadmin rows never render, but events are user-controlled input.
-        user when is_nil(user) or user.role == "superadmin" ->
+      cond do
+        hidden_from_customer_admin?(user) ->
           put_flash(socket, :error, "That user no longer exists.")
 
-        user ->
+        true ->
           case Accounts.resend_user_invitation(user, &url(~p"/users/invite/#{&1}")) do
             {:ok, invited} ->
               put_flash(socket, :info, "Invitation resent to #{invited.email}.")

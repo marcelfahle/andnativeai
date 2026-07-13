@@ -40,6 +40,13 @@ jobs:
       APPLIANCE_DOMAIN: ${{ inputs.domain }}
       APPLIANCE_ADMIN_EMAIL: ${{ inputs.admin_email }}
 
+    # Default GHA shell is `bash -e {0}` (no pipefail), so a failed remote
+    # command piped into tee would report tee's exit 0 — a green run over a
+    # broken appliance. Force pipefail for every run step.
+    defaults:
+      run:
+        shell: bash
+
     steps:
       - name: Install deploy SSH key
         run: |
@@ -57,8 +64,18 @@ jobs:
             "APPLIANCE_SLUG=$(printf '%q' "$APPLIANCE_SLUG")" \
             "APPLIANCE_DOMAIN=$(printf '%q' "$APPLIANCE_DOMAIN")" \
             "APPLIANCE_ADMIN_EMAIL=$(printf '%q' "$APPLIANCE_ADMIN_EMAIL")" \
-            'bash -s' <<'REMOTE' | tee provision.log
+            'bash -s' <<'REMOTE' 2>&1 | tee provision.log
           set -euo pipefail
+
+          # The box copy of the script is updated only by deploy-main's rsync
+          # on push to main. Dispatching before that lands (pre-merge, or a
+          # lagging/failed deploy) would run an old script whose summary can
+          # print the generated password. Refuse unless the box script knows
+          # QUIET_CREDENTIALS.
+          if ! grep -q QUIET_CREDENTIALS /opt/andnativeai/scripts/provision-appliance.sh; then
+            echo "box provision script predates QUIET_CREDENTIALS; deploy main first" >&2
+            exit 1
+          fi
 
           # Fail fast if the deploy user cannot create appliances at all.
           APPLIANCES_ROOT="${APPLIANCES_ROOT:-/opt/appliances}"

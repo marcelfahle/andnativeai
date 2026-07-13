@@ -1,6 +1,8 @@
 defmodule AndnativeAiWeb.UserSessionController do
   use AndnativeAiWeb, :controller
 
+  require Logger
+
   alias AndnativeAi.Accounts
   alias AndnativeAiWeb.UserAuth
 
@@ -40,6 +42,8 @@ defmodule AndnativeAiWeb.UserSessionController do
 
   # Platform staff are hidden from customer user management (AAI-34), so
   # their access must be visible where it matters: the governance trail.
+  # Auditing is best-effort end to end — the tenant lookup is inside the
+  # rescue too, so no failure here can ever break a login.
   defp record_platform_access(%{role: "superadmin"} = user) do
     tenant = AndnativeAi.Memory.ensure_demo_tenant!()
 
@@ -53,6 +57,10 @@ defmodule AndnativeAiWeb.UserSessionController do
       metadata: %{role: user.role},
       occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
     })
+  rescue
+    error ->
+      Logger.warning("Could not record platform access: #{Exception.message(error)}")
+      :ok
   end
 
   defp record_platform_access(_user), do: :ok
