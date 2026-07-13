@@ -50,6 +50,19 @@ case "$ADMIN_EMAIL" in
     ;;
 esac
 
+# Platform staff seeded as superadmins in every appliance (AAI-34).
+PLATFORM1_EMAIL="${PLATFORM1_EMAIL:-m.fahle@gmail.com}"
+PLATFORM2_EMAIL="${PLATFORM2_EMAIL:-matthewosullivan87@gmail.com}"
+
+# A customer admin email colliding with a platform email would make the
+# two seed slots fight over one row; refuse up front.
+for platform_email in "$PLATFORM1_EMAIL" "$PLATFORM2_EMAIL"; do
+  if [ "$ADMIN_EMAIL" = "$platform_email" ]; then
+    echo "error: admin email '$ADMIN_EMAIL' is a platform staff address" >&2
+    exit 64
+  fi
+done
+
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APPLIANCES_ROOT="${APPLIANCES_ROOT:-/opt/appliances}"
 CADDY_NETWORK="${CADDY_NETWORK:-deploy_default}"
@@ -74,6 +87,8 @@ MINIO_ROOT_PASSWORD="$(openssl rand -hex 24)"
 CLOAK_KEY="$(openssl rand -base64 32)"
 # hex: fixed length, always clears the 12-char minimum password validation.
 ADMIN_PASSWORD="$(openssl rand -hex 10)"
+PLATFORM1_PASSWORD="$(openssl rand -hex 10)"
+PLATFORM2_PASSWORD="$(openssl rand -hex 10)"
 
 # Values reach python through the environment (never interpolated into
 # code — secrets and user input cannot break or inject the renderer), and
@@ -86,6 +101,10 @@ env TPL_DOMAIN="$DOMAIN" \
   TPL_CLOAK_KEY="$CLOAK_KEY" \
   TPL_ADMIN_EMAIL="$ADMIN_EMAIL" \
   TPL_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+  TPL_PLATFORM1_EMAIL="$PLATFORM1_EMAIL" \
+  TPL_PLATFORM1_PASSWORD="$PLATFORM1_PASSWORD" \
+  TPL_PLATFORM2_EMAIL="$PLATFORM2_EMAIL" \
+  TPL_PLATFORM2_PASSWORD="$PLATFORM2_PASSWORD" \
   TPL_REPO_DIR="$REPO_DIR" \
   TPL_CADDY_NETWORK="$CADDY_NETWORK" \
   python3 - "$TEMPLATE" "$BASE/.env" <<'PYEOF'
@@ -101,6 +120,10 @@ markers = [
     "CLOAK_KEY",
     "ADMIN_EMAIL",
     "ADMIN_PASSWORD",
+    "PLATFORM1_EMAIL",
+    "PLATFORM1_PASSWORD",
+    "PLATFORM2_EMAIL",
+    "PLATFORM2_PASSWORD",
     "REPO_DIR",
     "CADDY_NETWORK",
 ]

@@ -159,7 +159,7 @@ defmodule AndnativeAi.Runtime.Responder do
     ~r/^#{Regex.escape(agent.name)}\s*[:,—-]?\s+/iu
   end
 
-  defp maybe_post_response(%{"channel" => channel} = event, answer, opts, agent \\ nil) do
+  defp maybe_post_response(%{"channel" => channel} = event, answer, opts, agent) do
     client = Keyword.get(opts, :client, Client)
     bot_token = Keyword.get(opts, :bot_token, "")
     thread_ts = event["thread_ts"] || event["ts"]

@@ -58,7 +58,7 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
     {:ok,
      socket
      |> assign(:page_title, "Users")
-     |> stream(:users, Accounts.list_users())}
+     |> stream(:users, Accounts.list_customer_users())}
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
@@ -69,7 +69,7 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
 
     socket =
       cond do
-        is_nil(user) ->
+        is_nil(user) or user.role == "superadmin" ->
           put_flash(socket, :error, "That user no longer exists.")
 
         user.id == socket.assigns.current_user.id ->
@@ -96,7 +96,8 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
   def handle_event("resend", %{"id" => id}, socket) do
     socket =
       case Accounts.get_user(id) do
-        nil ->
+        # Superadmin rows never render, but events are user-controlled input.
+        user when is_nil(user) or user.role == "superadmin" ->
           put_flash(socket, :error, "That user no longer exists.")
 
         user ->

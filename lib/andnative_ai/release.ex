@@ -144,6 +144,34 @@ defmodule AndnativeAi.Release do
     end)
   end
 
+  @doc """
+  Rotates a platform superadmin's password out of band — the only
+  supported rotation path, since superadmins are excluded from the
+  public self-serve reset flow (AAI-34). Prints the new password once.
+  """
+  def rotate_superadmin_password(email) when is_binary(email) do
+    with_task_env(fn _repo ->
+      case AndnativeAi.Accounts.get_user_by_email(email) do
+        %{role: "superadmin"} = user ->
+          new_password = 24 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+
+          case AndnativeAi.Accounts.reset_user_password(user, %{password: new_password}) do
+            {:ok, _user} ->
+              IO.puts("New password for #{email}: #{new_password}")
+
+            {:error, changeset} ->
+              IO.puts("Could not rotate #{email}: #{inspect(changeset.errors)}")
+          end
+
+        %{} ->
+          IO.puts("#{email} is not a superadmin; use the in-app reset flow.")
+
+        nil ->
+          IO.puts("No user found with email #{email}.")
+      end
+    end)
+  end
+
   defp slack_credentials(tenant_id) do
     AndnativeAi.Slack.Installations.bot_credentials(tenant_id)
   end
