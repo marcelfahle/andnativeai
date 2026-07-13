@@ -215,9 +215,6 @@ defmodule AndnativeAi.Accounts do
   Invites a new user by email: creates the user with a random (unguessable)
   password and an unset `confirmed_at`, then emails an activation link. The
   invitee sets their real password via `accept_invitation/2`.
-  """
-  @doc """
-  Invites a user by email.
 
   A superadmin's email must be as invisible to a customer admin as it is
   in the user list: a unique-constraint error would otherwise confirm the
@@ -316,9 +313,13 @@ defmodule AndnativeAi.Accounts do
     Repo.delete(user)
   end
 
+  # The last-user guard protects a customer's final admin. A platform
+  # account is not one of those, so removing it is never a lockout.
+  def delete_user(%User{role: "superadmin"} = user), do: Repo.delete(user)
+
   def delete_user(%User{} = user) do
-    # Superadmins are excluded so platform accounts never mask the fact
-    # that a customer is about to delete their own last admin.
+    # Superadmins are excluded from the count so platform accounts never
+    # mask the fact that a customer is about to delete their own last admin.
     active_count =
       Repo.aggregate(
         from(u in exclude_superadmins(User), where: not is_nil(u.confirmed_at)),

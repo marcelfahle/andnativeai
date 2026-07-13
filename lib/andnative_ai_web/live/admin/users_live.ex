@@ -7,8 +7,10 @@ defmodule AndnativeAiWeb.Admin.UsersLive do
   # Platform accounts are hidden from CUSTOMER admins — not from each
   # other. Staff hiding themselves from staff serves no one, and on our
   # own appliance it makes the page look empty.
+  # An unknown id is always "hidden" — no viewer makes a missing row real.
+  defp hidden?(nil, _viewer), do: true
   defp hidden?(_user, %{role: "superadmin"}), do: false
-  defp hidden?(user, _viewer), do: is_nil(user) or User.superadmin?(user)
+  defp hidden?(user, _viewer), do: User.superadmin?(user)
 
   defp visible_users(%{role: "superadmin"}), do: Accounts.list_users()
   defp visible_users(_viewer), do: Accounts.list_customer_users()

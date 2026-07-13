@@ -101,6 +101,7 @@ defmodule AndnativeAiWeb.Admin.UsersLiveTest do
     end
 
     test "a superadmin sees platform accounts and can act on them", %{conn: conn, user: user} do
+      # (visibility + a real action + a stale id, below)
       {:ok, viewer} = AndnativeAi.Accounts.set_user_role(user, "superadmin")
       conn = log_in_user(conn, viewer)
 
@@ -110,11 +111,22 @@ defmodule AndnativeAiWeb.Admin.UsersLiveTest do
           "superadmin"
         )
 
-      {:ok, _view, html} = live(conn, ~p"/admin/users")
+      {:ok, view, html} = live(conn, ~p"/admin/users")
 
       # Staff hiding from staff serves no one — the page must not look empty.
       assert html =~ "platform2@andnative.ai"
       assert html =~ viewer.email
+
+      # ...and the rows are actionable, not just visible.
+      other =
+        Enum.find(AndnativeAi.Accounts.list_users(), &(&1.email == "platform2@andnative.ai"))
+
+      render_click(view, "delete", %{"id" => to_string(other.id)})
+      refute AndnativeAi.Accounts.get_user(other.id)
+
+      # A stale id is still nobody, even for a superadmin — no crash.
+      html = render_click(view, "delete", %{"id" => to_string(other.id)})
+      assert html =~ "That user no longer exists."
     end
 
     test "inviting a platform email never reveals the hidden account", %{conn: conn} do
