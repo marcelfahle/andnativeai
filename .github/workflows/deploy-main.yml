@@ -91,14 +91,33 @@ jobs:
 
       - name: Verify deployment
         run: |
-          # The edge basic_auth is gone (the app owns auth now), so the root
-          # redirects to the Phoenix login page rather than prompting.
-          code="$(curl -sS -o /dev/null -w '%{http_code}' https://andnativeai.marcelfahle.net)"
-          test "$code" = "302"
+          # Assert a redirect AND its target — "some 302 happened" would pass
+          # for a maintenance page or an open redirect.
+          assert_redirects_to() {
+            url="$1"
+            expected="$2"
 
-          # Auth is really enforced: an admin page must redirect to /login...
-          code="$(curl -sS -o /dev/null -w '%{http_code}' https://andnativeai.marcelfahle.net/admin/control-plane)"
-          test "$code" = "302"
+            read -r code location < <(curl -sS -o /dev/null \
+              -w '%{http_code} %{redirect_url}\n' "$url")
+
+            if [ "$code" != "302" ]; then
+              echo "$url: expected 302, got $code" >&2
+              exit 1
+            fi
+
+            case "$location" in
+              *"$expected"*) ;;
+              *)
+                echo "$url: expected a redirect to $expected, got '$location'" >&2
+                exit 1
+                ;;
+            esac
+          }
+
+          # The edge basic_auth is gone (the app owns auth now): the root sends
+          # visitors into the app, and the app bounces anonymous ones to login.
+          assert_redirects_to https://andnativeai.marcelfahle.net /admin/agents
+          assert_redirects_to https://andnativeai.marcelfahle.net/admin/control-plane /login
 
           # ...the login page itself must render...
           code="$(curl -sS -o /dev/null -w '%{http_code}' https://andnativeai.marcelfahle.net/login)"
