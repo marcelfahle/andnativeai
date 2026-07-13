@@ -91,7 +91,23 @@ jobs:
 
       - name: Verify deployment
         run: |
+          # The edge basic_auth is gone (the app owns auth now), so the root
+          # redirects to the Phoenix login page rather than prompting.
           code="$(curl -sS -o /dev/null -w '%{http_code}' https://andnativeai.marcelfahle.net)"
+          test "$code" = "302"
+
+          # Auth is really enforced: an admin page must redirect to /login...
+          code="$(curl -sS -o /dev/null -w '%{http_code}' https://andnativeai.marcelfahle.net/admin/control-plane)"
+          test "$code" = "302"
+
+          # ...the login page itself must render...
+          code="$(curl -sS -o /dev/null -w '%{http_code}' https://andnativeai.marcelfahle.net/login)"
+          test "$code" = "200"
+
+          # ...and the memory API must never be reachable unauthenticated.
+          code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+            https://andnativeai.marcelfahle.net/api/memory/search \
+            -H 'content-type: application/json' -d '{"tenant_id":1,"query":"x"}')"
           test "$code" = "401"
 
           ssh -i ~/.ssh/andnative_deploy -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" <<'REMOTE'
