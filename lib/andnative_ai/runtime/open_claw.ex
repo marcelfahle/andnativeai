@@ -90,6 +90,10 @@ defmodule AndnativeAi.Runtime.OpenClaw do
         andnative_memory: %{
           transport: "http",
           url: memory_tool_url(),
+          # The memory API is token-guarded (MemoryApiAuth). A gateway
+          # reading this config without the header gets 401s with no hint
+          # why, so carry the credential here.
+          headers: %{"authorization" => "Bearer " <> memory_tool_token()},
           tools: [MemoryTool.schema()]
         }
       },
@@ -386,4 +390,6 @@ defmodule AndnativeAi.Runtime.OpenClaw do
   defp memory_tool_url do
     System.get_env("MEMORY_TOOL_URL", "http://control-panel:4000/api/memory/search")
   end
+
+  defp memory_tool_token, do: System.get_env("MEMORY_TOOL_TOKEN", "")
 end

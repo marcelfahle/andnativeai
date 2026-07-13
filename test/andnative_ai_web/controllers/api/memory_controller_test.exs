@@ -11,9 +11,10 @@ defmodule AndnativeAiWeb.Api.MemoryControllerTest do
     System.put_env("MEMORY_TOOL_TOKEN", @token)
 
     on_exit(fn ->
-      if previous,
-        do: System.put_env("MEMORY_TOOL_TOKEN", previous),
-        else: System.delete_env("MEMORY_TOOL_TOKEN")
+      case previous do
+        nil -> System.delete_env("MEMORY_TOOL_TOKEN")
+        value -> System.put_env("MEMORY_TOOL_TOKEN", value)
+      end
     end)
 
     :ok

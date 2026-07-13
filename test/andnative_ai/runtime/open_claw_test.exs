@@ -96,6 +96,17 @@ defmodule AndnativeAi.Runtime.OpenClawTest do
            |> List.first()
            |> Map.get("name") == "memory_search"
 
+    # The memory API is token-guarded; a gateway reading this config must
+    # be able to authenticate or it would silently 401.
+    System.put_env("MEMORY_TOOL_TOKEN", "cfg-token")
+    on_exit(fn -> System.delete_env("MEMORY_TOOL_TOKEN") end)
+
+    {:ok, resynced} = OpenClaw.sync_agent(agent)
+    config = resynced.runtime_ref |> File.read!() |> Jason.decode!()
+
+    assert get_in(config, ["mcp_servers", "andnative_memory", "headers", "authorization"]) ==
+             "Bearer cfg-token"
+
     assert OpenClaw.health(synced_agent).config_exists?
   end
 
